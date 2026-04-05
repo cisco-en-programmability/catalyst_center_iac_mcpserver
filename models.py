@@ -28,6 +28,7 @@ class SiteType(str, Enum):
 class WorkflowState(str, Enum):
     MERGED = "merged"
     DELETED = "deleted"
+    GATHERED = "gathered"
 
 
 class FabricDeviceRole(str, Enum):

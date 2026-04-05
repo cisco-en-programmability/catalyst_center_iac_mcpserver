@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import json
 from typing import Any
 
 import jwt
@@ -33,6 +34,47 @@ from transformers import (
     build_template_workflow_config,
 )
 
+GENERIC_WORKFLOW_MODULES: tuple[str, ...] = (
+    "accesspoint_location_workflow_manager",
+    "accesspoint_workflow_manager",
+    "application_policy_workflow_manager",
+    "assurance_device_health_score_settings_workflow_manager",
+    "assurance_icap_settings_workflow_manager",
+    "assurance_issue_workflow_manager",
+    "backup_and_restore_workflow_manager",
+    "device_configs_backup_workflow_manager",
+    "device_credential_workflow_manager",
+    "discovery_workflow_manager",
+    "events_and_notifications_workflow_manager",
+    "fabric_devices_info_workflow_manager",
+    "inventory_workflow_manager",
+    "ise_radius_integration_workflow_manager",
+    "lan_automation_workflow_manager",
+    "network_compliance_workflow_manager",
+    "network_devices_info_workflow_manager",
+    "network_profile_switching_workflow_manager",
+    "network_profile_wireless_workflow_manager",
+    "network_settings_workflow_manager",
+    "path_trace_workflow_manager",
+    "pnp_workflow_manager",
+    "provision_workflow_manager",
+    "reports_workflow_manager",
+    "rma_workflow_manager",
+    "sda_extranet_policies_workflow_manager",
+    "sda_fabric_devices_workflow_manager",
+    "sda_fabric_multicast_workflow_manager",
+    "sda_fabric_sites_zones_workflow_manager",
+    "sda_fabric_transits_workflow_manager",
+    "sda_fabric_virtual_networks_workflow_manager",
+    "sda_host_port_onboarding_workflow_manager",
+    "site_workflow_manager",
+    "swim_workflow_manager",
+    "tags_workflow_manager",
+    "template_workflow_manager",
+    "user_role_workflow_manager",
+    "wired_campus_automation_workflow_manager",
+    "wireless_design_workflow_manager",
+)
 
 class NoBufferingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -127,6 +169,18 @@ async def _submit(
         ),
     )
     return TaskSubmissionResponse(taskId=submission.task_id)
+
+
+def _parse_config_json(config_json: str) -> list[dict[str, Any]]:
+    try:
+        parsed = json.loads(config_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"config_json is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, list):
+        raise HTTPException(status_code=400, detail="config_json must decode to a list of workflow config objects")
+    if not all(isinstance(item, dict) for item in parsed):
+        raise HTTPException(status_code=400, detail="config_json must decode to a list of dictionaries")
+    return parsed
 
 
 @mcp.tool(
@@ -329,6 +383,58 @@ async def manage_assurance_issues(
         state=WorkflowState.MERGED,
         config=build_assurance_issue_workflow_config(request),
     )).model_dump()
+
+
+def _register_generic_workflow_tools() -> None:
+    destructive_module_hints = {"backup_and_restore_workflow_manager", "rma_workflow_manager"}
+
+    for module_name in GENERIC_WORKFLOW_MODULES:
+        tool_name = f"run_{module_name}"
+        destructive = module_name in destructive_module_hints
+
+        def _make_generic_tool(
+            module_name: str,
+            tool_name: str,
+            destructive: bool,
+        ):
+            async def _generic_tool(
+                config_json: str,
+                state: WorkflowState = WorkflowState.MERGED,
+                tenant_id: str = "default",
+                ctx: Context | None = None,
+            ) -> dict[str, Any]:
+                assert ctx is not None
+                config = _parse_config_json(config_json)
+                return (
+                    await _submit(
+                        ctx=ctx,
+                        tool_name=tool_name,
+                        module_name=module_name,
+                        tenant_id=tenant_id,
+                        state=state,
+                        config=config,
+                        destructive=destructive,
+                    )
+                ).model_dump()
+
+            return _generic_tool
+
+        generic_tool = _make_generic_tool(module_name, tool_name, destructive)
+
+        description = (
+            f"Generic wrapper for `{module_name}`. Pass the module `config` payload as a JSON string."
+        )
+        meta = {"humanInTheLoop": {"required": True}} if destructive else None
+        mcp.tool(
+            generic_tool,
+            name=tool_name,
+            description=description,
+            annotations=_tool_annotations(destructive=destructive),
+            meta=meta,
+        )
+
+
+_register_generic_workflow_tools()
 
 
 @asynccontextmanager

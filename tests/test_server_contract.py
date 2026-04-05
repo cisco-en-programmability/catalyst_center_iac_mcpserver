@@ -1,7 +1,7 @@
+import asyncio
+
+import server
 from models import TaskLifecycleStatus, TaskRecord
-from redis_store import InMemoryTaskStore
-from runner_engine import RunnerEngine
-from settings import Settings
 
 
 def test_task_record_status_payload_shape():
@@ -23,3 +23,17 @@ def test_task_record_status_payload_shape():
     assert payload["taskId"] == "task-1"
     assert payload["status"] == "submitted"
     assert payload["destructive"] is True
+
+
+def test_all_workflow_manager_tools_are_registered():
+    async def _list_names():
+        tools = await server.mcp.list_tools()
+        return {tool.name for tool in tools}
+
+    names = asyncio.run(_list_names())
+
+    assert "provision_site" in names
+    assert "run_site_workflow_manager" in names
+    assert "run_template_workflow_manager" in names
+    assert "run_inventory_workflow_manager" in names
+    assert "run_wireless_design_workflow_manager" in names

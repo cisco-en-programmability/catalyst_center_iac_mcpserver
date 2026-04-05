@@ -10,6 +10,7 @@
 - Redis stores task state, progress, result summaries, and runner artifact locations.
 - Runner artifacts are written to disk and indexed in Redis by `taskId`.
 - Tool inputs remain flat; `transformers.py` re-expands them into the nested `config` payloads expected by workflow-manager modules.
+- The runtime targets the `cisco.catalystcenter` Ansible collection only.
 
 ## Transport
 
@@ -32,26 +33,31 @@ location /mcp/ {
 
 ```bash
 export REDIS_URL=redis://redis:6379/0
-export CATALYST_CENTER_HOST=https://catalyst-center.example.com
-export CATALYST_CENTER_USERNAME=automation
-export CATALYST_CENTER_PASSWORD=secret
-export CATALYST_CENTER_VERIFY_SSL=false
+export CATALYSTCENTER_HOST=catalyst-center.example.com
+export CATALYSTCENTER_USERNAME=automation
+export CATALYSTCENTER_PASSWORD=secret
+export CATALYSTCENTER_VERIFY_SSL=false
+export CATALYSTCENTER_VERSION=2.3.7.9
 export RUNNER_ARTIFACT_ROOT=/var/lib/catalyst-center-iac-mcp/artifacts
 ```
 
 Multi-tenant credentials can be injected with tenant-scoped variables:
 
 ```bash
-export CATALYST_CENTER_ACME_HOST=https://acme-catc.example.com
-export CATALYST_CENTER_ACME_USERNAME=svc-acme
-export CATALYST_CENTER_ACME_PASSWORD=secret
+export CATALYSTCENTER_ACME_HOST=acme-catc.example.com
+export CATALYSTCENTER_ACME_USERNAME=svc-acme
+export CATALYSTCENTER_ACME_PASSWORD=secret
 ```
 
 Then invoke the tools with `tenant_id="acme"`.
+
+The runner writes a local `sitecustomize.py` shim into each Ansible private data directory.
+That shim aliases `catalystcentersdk.api.CatalystCenterAPI` to `DNACenterAPI` when needed,
+which keeps the current `cisco.catalystcenter` collection working without falling back to
+the sunset `cisco.dnac` collection.
 
 ## Run
 
 ```bash
 uvicorn server:app --host 0.0.0.0 --port 8000
 ```
-

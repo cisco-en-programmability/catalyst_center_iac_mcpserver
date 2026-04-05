@@ -28,13 +28,12 @@ class Settings(BaseSettings):
     task_ttl_seconds: int = 86400
     task_poll_interval_ms: int = 2000
     ansible_collection_namespace: str = "cisco.catalystcenter"
-    ansible_fallback_collection_namespace: str = "cisco.dnac"
-    dnac_host: str | None = None
-    dnac_username: str | None = None
-    dnac_password: str | None = None
-    dnac_verify_ssl: bool = True
-    dnac_port: int = 443
-    dnac_version: str = "2.3.7.9"
+    catalystcenter_host: str | None = None
+    catalystcenter_username: str | None = None
+    catalystcenter_password: str | None = None
+    catalystcenter_verify_ssl: bool = True
+    catalystcenter_port: int = 443
+    catalystcenter_version: str = "2.3.7.9"
     oauth_enabled: bool = False
     oauth_issuer: str | None = None
     oauth_audience: str | None = None
@@ -43,7 +42,7 @@ class Settings(BaseSettings):
 
     def tenant_env_name(self, tenant_id: str, field_name: str) -> str:
         tenant = tenant_id.strip().upper().replace("-", "_")
-        return f"CATALYST_CENTER_{tenant}_{field_name}"
+        return f"CATALYSTCENTER_{tenant}_{field_name}"
 
 
 @lru_cache(maxsize=1)

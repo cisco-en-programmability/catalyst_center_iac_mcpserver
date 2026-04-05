@@ -45,9 +45,9 @@ class RunnerEngine:
     def resolve_credentials(self, tenant_id: str) -> TenantCredentials:
         tenant_prefix = tenant_id.strip().upper().replace("-", "_")
         env = os.environ
-        host = env.get(self.settings.tenant_env_name(tenant_id, "HOST")) or self.settings.dnac_host
-        username = env.get(self.settings.tenant_env_name(tenant_id, "USERNAME")) or self.settings.dnac_username
-        password = env.get(self.settings.tenant_env_name(tenant_id, "PASSWORD")) or self.settings.dnac_password
+        host = env.get(self.settings.tenant_env_name(tenant_id, "HOST")) or self.settings.catalystcenter_host
+        username = env.get(self.settings.tenant_env_name(tenant_id, "USERNAME")) or self.settings.catalystcenter_username
+        password = env.get(self.settings.tenant_env_name(tenant_id, "PASSWORD")) or self.settings.catalystcenter_password
         verify_ssl_raw = env.get(self.settings.tenant_env_name(tenant_id, "VERIFY_SSL"))
         port_raw = env.get(self.settings.tenant_env_name(tenant_id, "PORT"))
 
@@ -59,9 +59,9 @@ class RunnerEngine:
         verify_ssl = (
             verify_ssl_raw.lower() == "true"
             if verify_ssl_raw is not None
-            else self.settings.dnac_verify_ssl
+            else self.settings.catalystcenter_verify_ssl
         )
-        port = int(port_raw) if port_raw else self.settings.dnac_port
+        port = int(port_raw) if port_raw else self.settings.catalystcenter_port
 
         return TenantCredentials(
             host=self._normalize_host(host),
@@ -70,7 +70,7 @@ class RunnerEngine:
             verify_ssl=verify_ssl,
             port=port,
             version=env.get(self.settings.tenant_env_name(tenant_id, "VERSION"))
-            or self.settings.dnac_version,
+            or self.settings.catalystcenter_version,
         )
 
     @staticmethod
@@ -109,24 +109,11 @@ class RunnerEngine:
             "config_verify": True,
             "config": config,
         }
-        fallback_module_args = {
-            "dnac_host": credentials.host,
-            "dnac_username": credentials.username,
-            "dnac_password": credentials.password,
-            "dnac_verify": credentials.verify_ssl,
-            "dnac_port": credentials.port,
-            "dnac_version": credentials.version,
-            "state": state,
-            "config_verify": True,
-            "config": config,
-        }
         playbook_name = self._write_runner_files(
             artifact_dir=artifact_dir,
             collection_namespace=self.settings.ansible_collection_namespace,
-            fallback_namespace=self.settings.ansible_fallback_collection_namespace,
             module_name=module_name,
             primary_module_args=primary_module_args,
-            fallback_module_args=fallback_module_args,
         )
         record = TaskRecord(
             task_id=task_id,
@@ -179,10 +166,8 @@ class RunnerEngine:
         *,
         artifact_dir: Path,
         collection_namespace: str,
-        fallback_namespace: str,
         module_name: str,
         primary_module_args: dict[str, Any],
-        fallback_module_args: dict[str, Any],
     ) -> str:
         env_dir = artifact_dir / "env"
         project_dir = artifact_dir / "project"
@@ -199,14 +184,8 @@ class RunnerEngine:
   connection: local
   tasks:
     - name: Execute workflow manager
-      block:
-        - name: Execute workflow manager using preferred collection namespace
-          {collection_namespace}.{module_name}: "{{{{ primary_module_args }}}}"
-          register: catalyst_center_result
-      rescue:
-        - name: Retry with public Cisco namespace
-          {fallback_namespace}.{module_name}: "{{{{ fallback_module_args }}}}"
-          register: catalyst_center_result
+      {collection_namespace}.{module_name}: "{{{{ primary_module_args }}}}"
+      register: catalyst_center_result
 
     - name: Persist module result
       ansible.builtin.copy:
@@ -220,9 +199,17 @@ class RunnerEngine:
             orjson.dumps(
                 {
                     "primary_module_args": primary_module_args,
-                    "fallback_module_args": fallback_module_args,
                 }
             )
+        )
+        (env_dir / "sitecustomize.py").write_text(
+            "try:\n"
+            "    import catalystcentersdk.api as _api\n"
+            "    if not hasattr(_api, 'DNACenterAPI') and hasattr(_api, 'CatalystCenterAPI'):\n"
+            "        _api.DNACenterAPI = _api.CatalystCenterAPI\n"
+            "except Exception:\n"
+            "    pass\n",
+            encoding="utf-8",
         )
         (env_dir / "envvars").write_bytes(
             orjson.dumps(
@@ -231,6 +218,7 @@ class RunnerEngine:
                     "ANSIBLE_RETRY_FILES_ENABLED": "false",
                     "ANSIBLE_HOST_KEY_CHECKING": "false",
                     "PYTHONUNBUFFERED": "1",
+                    "PYTHONPATH": str(env_dir),
                 }
             )
         )

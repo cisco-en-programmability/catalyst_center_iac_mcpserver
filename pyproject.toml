@@ -14,7 +14,7 @@ authors = [
 dependencies = [
   "ansible-core>=2.17.0,<2.19.0",
   "ansible-runner>=2.4.0,<3.0.0",
-  "dnacentersdk>=2.8.6",
+  "catalystcentersdk>=3.1.6.0.0",
   "fastapi>=0.135.0,<1.0.0",
   "fastmcp>=3.2.0,<4.0.0",
   "orjson>=3.10.0,<4.0.0",
@@ -34,4 +34,3 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-
