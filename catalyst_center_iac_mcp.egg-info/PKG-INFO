@@ -1,0 +1,517 @@
+Metadata-Version: 2.4
+Name: catalyst-center-iac-mcp
+Version: 0.1.0
+Summary: Production-grade FastMCP server for Cisco Catalyst Center IaC workflow managers.
+Author: OpenAI Codex
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: ansible-core<2.19.0,>=2.17.0
+Requires-Dist: ansible-runner<3.0.0,>=2.4.0
+Requires-Dist: catalystcentersdk>=3.1.6.0.0
+Requires-Dist: fastapi<1.0.0,>=0.135.0
+Requires-Dist: fastmcp<4.0.0,>=3.2.0
+Requires-Dist: orjson<4.0.0,>=3.10.0
+Requires-Dist: pydantic<3.0.0,>=2.12.0
+Requires-Dist: pydantic-settings<3.0.0,>=2.0.0
+Requires-Dist: PyJWT<3.0.0,>=2.10.0
+Requires-Dist: redis<8.0.0,>=6.0.0
+Requires-Dist: sse-starlette<4.0.0,>=3.0.0
+Requires-Dist: uvicorn[standard]<1.0.0,>=0.43.0
+Provides-Extra: dev
+Requires-Dist: pytest<9.0.0,>=8.3.0; extra == "dev"
+Requires-Dist: pytest-asyncio<1.0.0,>=0.24.0; extra == "dev"
+
+# Catalyst Center Infrastructure as Code MCP Server
+
+`catalyst_center_iac_mcp` is a stateless FastMCP and FastAPI server that exposes Cisco Catalyst Center Ansible automation as MCP tools for AI agents and other MCP-aware clients.
+
+The server keeps the AI boundary flat and predictable, then translates those flat tool inputs into the nested payloads required by the `cisco.catalystcenter` Ansible collection. All execution runs through `ansible-runner`, and all task state is persisted in Redis.
+
+## What It Does
+
+- Exposes high-level MCP tools for common Catalyst Center workflows
+- Exposes generic wrappers for all discovered `*_workflow_manager` modules
+- Exposes read-only wrappers for all discovered `*_playbook_config_generator` modules
+- Returns task IDs immediately for long-running operations
+- Supports task polling at `GET /tasks/get/{task_id}`
+- Supports HTTP/SSE MCP transport
+- Supports tenant-scoped Catalyst Center credentials
+- Supports optional OAuth/JWT validation
+- Supports Linux deployment with direct TLS or reverse-proxy HTTPS
+
+With `cisco.catalystcenter 2.6.0`, the server currently discovers:
+
+- `39` `*_workflow_manager` modules
+- `30` `*_playbook_config_generator` modules
+- `78` MCP tools total, including specialized tools
+
+## Tool Model
+
+### Specialized Tools
+
+- `provision_site`
+- `delete_site`
+- `deploy_template`
+- `onboard_fabric_devices`
+- `reprovision_fabric_device`
+- `manage_assurance_issues`
+- `discover_devices`
+- `manage_inventory`
+- `configure_network_settings`
+
+These are the preferred tools for common workflows because they keep the LLM-facing interface flat and typed.
+
+### Generic Workflow Tools
+
+Generic workflow tools are registered as:
+
+- `run_<module_name>`
+
+Example:
+
+- `run_site_workflow_manager`
+- `run_inventory_workflow_manager`
+- `run_sda_fabric_devices_workflow_manager`
+
+These tools accept `config_json` as a JSON string representing the module `config` payload.
+
+### Generic Config Generator Tools
+
+Read-only config generator tools are registered as:
+
+- `generate_<domain>_config`
+
+Example:
+
+- `generate_site_config`
+- `generate_inventory_config`
+- `generate_template_config`
+- `generate_network_settings_config`
+
+These tools accept `module_args_json` as a JSON object string. If `state` is omitted, the server sets it to `gathered`.
+
+## Architecture
+
+- `FastMCP`: MCP tool registration and request handling
+- `FastAPI`: HTTP app for `/mcp`, `/healthz`, and `/tasks/get/{task_id}`
+- `ansible-runner`: the only execution path for Catalyst Center operations
+- `Redis`: task state, progress, results, and artifact indexing
+- `transformers.py`: flat tool input to nested workflow payload translation
+- `runner_engine.py`: module submission, ansible-runner lifecycle, artifact persistence
+
+The server is stateless by design. Redis and runner artifacts hold the operational state, which makes multi-instance deployment practical.
+
+## Requirements
+
+- Linux host or container runtime
+- Python `3.11+`
+- Redis
+- `cisco.catalystcenter` Ansible collection
+- Network reachability to Cisco Catalyst Center
+
+## Installation
+
+### Linux Quick Start
+
+Ubuntu or Debian example:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv python3-pip build-essential ca-certificates redis-server
+
+sudo useradd --system --create-home --home-dir /opt/catalyst-center-iac-mcp --shell /usr/sbin/nologin catalystmcp
+sudo mkdir -p /opt/catalyst-center-iac-mcp /var/lib/catalyst-center-iac-mcp/artifacts /etc/catalyst-center-iac-mcp
+sudo chown -R catalystmcp:catalystmcp /opt/catalyst-center-iac-mcp /var/lib/catalyst-center-iac-mcp /etc/catalyst-center-iac-mcp
+```
+
+Install the server:
+
+```bash
+cd /opt/catalyst-center-iac-mcp
+python3 -m venv .venv
+. .venv/bin/activate
+pip install --upgrade pip setuptools wheel
+pip install .
+ansible-galaxy collection install cisco.catalystcenter:==2.6.0
+```
+
+The package installs a Linux-friendly entrypoint:
+
+```bash
+catalyst-center-iac-mcp
+```
+
+### Development Install
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install --upgrade pip setuptools wheel
+pip install -e ".[dev]"
+ansible-galaxy collection install cisco.catalystcenter:==2.6.0
+python -m pytest -q
+```
+
+## Configuration
+
+### Required Environment Variables
+
+```bash
+REDIS_URL=redis://127.0.0.1:6379/0
+RUNNER_ARTIFACT_ROOT=/var/lib/catalyst-center-iac-mcp/artifacts
+
+CATALYSTCENTER_HOST=catalyst-center.example.com
+CATALYSTCENTER_USERNAME=automation
+CATALYSTCENTER_PASSWORD=change-me
+CATALYSTCENTER_VERIFY_SSL=false
+CATALYSTCENTER_PORT=443
+CATALYSTCENTER_VERSION=2.6.0
+```
+
+### Server Environment Variables
+
+```bash
+APP_NAME=catalyst_center_iac_mcp
+APP_VERSION=0.1.0
+SERVER_HOST=127.0.0.1
+SERVER_PORT=8000
+SERVER_WORKERS=2
+PROXY_HEADERS=true
+FORWARDED_ALLOW_IPS=127.0.0.1
+
+MCP_PATH=/mcp
+MCP_TRANSPORT=http
+RUNNER_TIMEOUT_SECONDS=3600
+TASK_TTL_SECONDS=86400
+TASK_POLL_INTERVAL_MS=2000
+```
+
+### Direct TLS Environment Variables
+
+If you want the app itself to terminate HTTPS:
+
+```bash
+TLS_CERTFILE=/etc/ssl/certs/catalyst-center-iac-mcp/fullchain.pem
+TLS_KEYFILE=/etc/ssl/private/catalyst-center-iac-mcp/privkey.pem
+TLS_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+SERVER_PORT=8443
+```
+
+### OAuth Environment Variables
+
+```bash
+OAUTH_ENABLED=true
+OAUTH_ISSUER=https://auth.example.com
+OAUTH_AUDIENCE=catalyst-center-mcp
+OAUTH_JWKS_URL=https://auth.example.com/.well-known/jwks.json
+ALLOW_ANONYMOUS_HEALTHCHECK=true
+```
+
+### Multi-Tenant Credentials
+
+```bash
+CATALYSTCENTER_ACME_HOST=acme-catc.example.com
+CATALYSTCENTER_ACME_USERNAME=svc-acme
+CATALYSTCENTER_ACME_PASSWORD=acme-secret
+CATALYSTCENTER_ACME_VERIFY_SSL=true
+CATALYSTCENTER_ACME_VERSION=2.6.0
+```
+
+When invoking a tool, pass `tenant_id="acme"` to target that Catalyst Center instance.
+
+An example environment file is included at [catalyst-center-iac-mcp.env.example](/Users/pawansi/workspace/catalyst_center_iac_mcp/deploy/env/catalyst-center-iac-mcp.env.example).
+
+## Running the Server
+
+### Linux CLI
+
+```bash
+. /opt/catalyst-center-iac-mcp/.venv/bin/activate
+export $(grep -v '^#' /etc/catalyst-center-iac-mcp/catalyst-center-iac-mcp.env | xargs)
+catalyst-center-iac-mcp
+```
+
+### Direct HTTPS
+
+This is acceptable for labs or small deployments:
+
+```bash
+export SERVER_HOST=0.0.0.0
+export SERVER_PORT=8443
+export TLS_CERTFILE=/etc/letsencrypt/live/mcp.example.com/fullchain.pem
+export TLS_KEYFILE=/etc/letsencrypt/live/mcp.example.com/privkey.pem
+
+catalyst-center-iac-mcp
+```
+
+Then access:
+
+- `https://mcp.example.com:8443/healthz`
+- `https://mcp.example.com:8443/mcp`
+
+### Recommended HTTPS Deployment
+
+For production Linux deployments, use:
+
+- the app on `127.0.0.1:8000`
+- NGINX or another reverse proxy for HTTPS
+- systemd for process supervision
+
+This is the better pattern because it gives you:
+
+- TLS termination and certificate rotation
+- reverse-proxy buffering control for MCP and SSE
+- cleaner operational boundaries
+- easier log and service management
+
+Provided deployment examples:
+
+- systemd unit: [catalyst-center-iac-mcp.service](/Users/pawansi/workspace/catalyst_center_iac_mcp/deploy/systemd/catalyst-center-iac-mcp.service)
+- NGINX config: [catalyst-center-iac-mcp.conf](/Users/pawansi/workspace/catalyst_center_iac_mcp/deploy/nginx/catalyst-center-iac-mcp.conf)
+
+### systemd Deployment
+
+1. Copy the example environment file:
+
+```bash
+sudo cp /opt/catalyst-center-iac-mcp/deploy/env/catalyst-center-iac-mcp.env.example /etc/catalyst-center-iac-mcp/catalyst-center-iac-mcp.env
+sudo vi /etc/catalyst-center-iac-mcp/catalyst-center-iac-mcp.env
+```
+
+2. Copy the service file:
+
+```bash
+sudo cp /opt/catalyst-center-iac-mcp/deploy/systemd/catalyst-center-iac-mcp.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now catalyst-center-iac-mcp
+```
+
+3. Verify:
+
+```bash
+sudo systemctl status catalyst-center-iac-mcp
+curl http://127.0.0.1:8000/healthz
+```
+
+### NGINX HTTPS Deployment
+
+1. Install NGINX and obtain a certificate.
+2. Copy the example config:
+
+```bash
+sudo cp /opt/catalyst-center-iac-mcp/deploy/nginx/catalyst-center-iac-mcp.conf /etc/nginx/conf.d/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+3. Verify over HTTPS:
+
+```bash
+curl https://mcp.example.com/healthz
+```
+
+Important for MCP and SSE:
+
+- reverse proxy buffering must stay disabled on `/mcp/`
+- `proxy_read_timeout` should be large enough for long-running jobs
+- `X-Forwarded-Proto` should be passed through
+
+## Docker
+
+Build:
+
+```bash
+docker build -t catalyst-center-iac-mcp .
+```
+
+Run:
+
+```bash
+docker run -d \
+  --name catalyst-center-iac-mcp \
+  -p 8000:8000 \
+  -e SERVER_HOST=0.0.0.0 \
+  -e SERVER_PORT=8000 \
+  -e REDIS_URL=redis://redis:6379/0 \
+  -e CATALYSTCENTER_HOST=catalyst-center.example.com \
+  -e CATALYSTCENTER_USERNAME=automation \
+  -e CATALYSTCENTER_PASSWORD=change-me \
+  -e CATALYSTCENTER_VERSION=2.6.0 \
+  -v /var/lib/catalyst-center-iac-mcp:/var/lib/catalyst-center-iac-mcp \
+  catalyst-center-iac-mcp
+```
+
+For production HTTPS, put the container behind NGINX, Caddy, HAProxy, or a Kubernetes ingress.
+
+## HTTPS MCP Client Example
+
+Example MCP server registration using HTTPS:
+
+```json
+{
+  "mcpServers": {
+    "catalyst-center": {
+      "url": "https://mcp.example.com/mcp",
+      "transport": "http"
+    }
+  }
+}
+```
+
+## Usage Examples
+
+### Example 1: Provision a Site
+
+```python
+result = await mcp.call_tool(
+    "provision_site",
+    {
+        "site_type": "building",
+        "name": "HQ-Building-1",
+        "parent_path": "Global/USA/San Jose",
+        "latitude": 37.3382,
+        "longitude": -121.8863,
+        "tenant_id": "default"
+    }
+)
+```
+
+Response:
+
+```json
+{
+  "taskId": "abc-123",
+  "status": "submitted"
+}
+```
+
+### Example 2: Run a Generic Workflow Manager
+
+```python
+import json
+
+config = [
+    {
+        "run_compliance": True,
+        "run_compliance_categories": ["INTENT", "RUNNING_CONFIG"],
+        "device_uuids": ["device-1", "device-2"]
+    }
+]
+
+result = await mcp.call_tool(
+    "run_network_compliance_workflow_manager",
+    {
+        "config_json": json.dumps(config),
+        "state": "merged",
+        "tenant_id": "default"
+    }
+)
+```
+
+### Example 3: Run a Read-Only Config Generator
+
+```python
+import json
+
+module_args = {
+    "config": {
+        "component_specific_filters": {
+            "site": [
+                {
+                    "parent_name_hierarchy": "Global/USA/SAN JOSE",
+                    "site_type": ["building", "floor"]
+                }
+            ]
+        }
+    }
+}
+
+result = await mcp.call_tool(
+    "generate_site_config",
+    {
+        "module_args_json": json.dumps(module_args),
+        "tenant_id": "default"
+    }
+)
+```
+
+### Example 4: Poll Task Status Over HTTPS
+
+```bash
+curl https://mcp.example.com/tasks/get/abc-123
+```
+
+Example response:
+
+```json
+{
+  "taskId": "abc-123",
+  "status": "completed",
+  "statusMessage": "Workflow completed successfully",
+  "progress": 100,
+  "total": 100,
+  "toolName": "generate_site_config",
+  "moduleName": "site_playbook_config_generator",
+  "artifactDir": "/var/lib/catalyst-center-iac-mcp/artifacts/abc-123",
+  "result": {}
+}
+```
+
+## Endpoints
+
+- `GET /healthz`
+- `POST /mcp`
+- `GET /tasks/get/{task_id}`
+
+## Troubleshooting
+
+### Missing credentials
+
+If a task fails with missing credentials, verify the correct default or tenant-scoped `CATALYSTCENTER_*` variables are present.
+
+### Generator tools not showing up
+
+The server discovers `*_playbook_config_generator` modules from the installed `cisco.catalystcenter` collection. If those tools are missing:
+
+```bash
+ansible-galaxy collection install cisco.catalystcenter:==2.6.0 --force
+```
+
+### Reverse proxy timeouts or broken SSE
+
+Check:
+
+- proxy buffering is disabled on `/mcp/`
+- `proxy_read_timeout` is large enough
+- `X-Forwarded-Proto` is passed through correctly
+
+### Debugging runner output
+
+```bash
+ls -la $RUNNER_ARTIFACT_ROOT/<task_id>/
+```
+
+## Security Notes
+
+- Prefer HTTPS in all non-lab deployments
+- Prefer reverse-proxy TLS over direct app TLS in production
+- Store credentials in a vault or secret manager, not directly in shell history
+- Enable OAuth for shared or customer-facing deployments
+- Keep destructive tools behind explicit human confirmation in the client
+
+## Verification
+
+Run tests:
+
+```bash
+python -m pytest -q
+```
+
+## License
+
+Cisco Sample Code License
+
+## Support
+
+- GitHub: [cisco-en-programmability/catalyst_center_iac_mcpserver](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver)
+- Cisco DevNet: [Catalyst Center](https://developer.cisco.com/catalyst-center/)

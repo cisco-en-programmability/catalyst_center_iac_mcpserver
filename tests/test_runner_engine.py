@@ -59,3 +59,40 @@ async def test_runner_files_use_cisco_catalystcenter_only(tmp_path: Path):
     assert "cisco.dnac" not in playbook
     assert "PYTHONPATH" in envvars
     assert "CatalystCenterAPI" in sitecustomize
+
+
+@pytest.mark.asyncio
+async def test_submit_module_supports_playbook_config_generator_args(tmp_path: Path):
+    settings = Settings(
+        runner_artifact_root=tmp_path,
+        catalystcenter_host="https://catc.example.com",
+        catalystcenter_username="svc",
+        catalystcenter_password="secret",
+    )
+    engine = RunnerEngine(settings, store=InMemoryTaskStore())
+
+    submission = await engine.submit_module(
+        tool_name="generate_site_config",
+        module_name="site_playbook_config_generator",
+        tenant_id="default",
+        module_args={
+            "state": "gathered",
+            "file_mode": "overwrite",
+            "config": {
+                "component_specific_filters": {
+                    "site": [
+                        {"parent_name_hierarchy": "Global/USA/SAN JOSE", "site_type": ["building", "floor"]}
+                    ]
+                }
+            },
+        },
+    )
+
+    record = await engine.get_task(submission.task_id)
+    playbook = next(tmp_path.glob("*/project/playbook.yml")).read_text(encoding="utf-8")
+
+    assert submission.status == "submitted"
+    assert record is not None
+    assert record.module_name == "site_playbook_config_generator"
+    assert record.module_args["state"] == "gathered"
+    assert "cisco.catalystcenter.site_playbook_config_generator" in playbook

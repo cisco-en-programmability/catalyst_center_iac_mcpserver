@@ -26,10 +26,23 @@ dependencies = [
   "uvicorn[standard]>=0.43.0,<1.0.0",
 ]
 
+[project.scripts]
+catalyst-center-iac-mcp = "server:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3.0,<9.0.0",
   "pytest-asyncio>=0.24.0,<1.0.0",
+]
+
+[tool.setuptools]
+py-modules = [
+  "server",
+  "runner_engine",
+  "transformers",
+  "redis_store",
+  "settings",
+  "models",
 ]
 
 [tool.pytest.ini_options]

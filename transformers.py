@@ -4,7 +4,10 @@ from typing import Any
 
 from models import (
     AssuranceIssueRequest,
+    DiscoveryRequest,
     FabricDeviceRequest,
+    InventoryDeviceRequest,
+    NetworkSettingsRequest,
     SiteProvisionRequest,
     SiteType,
     TemplateDeployRequest,
@@ -98,3 +101,58 @@ def build_assurance_issue_workflow_config(
     )
     return [{"assurance_issue": [assurance_issue]}]
 
+
+def build_discovery_workflow_config(
+    request: DiscoveryRequest,
+) -> list[dict[str, Any]]:
+    discovery_config = _compact(
+        {
+            "discovery_name": request.discovery_name,
+            "discovery_type": request.discovery_type.value,
+            "ip_address_list": request.ip_address_list,
+            "protocol_order": request.protocol_order,
+            "retry": request.retry,
+            "timeout": request.timeout,
+            "enable_password_list": request.enable_password_list,
+            "global_credential_id_list": request.global_credential_id_list,
+            "preferred_mgmt_ip_method": request.preferred_mgmt_ip_method,
+        }
+    )
+    return [{"discovery": [discovery_config]}]
+
+
+def build_inventory_workflow_config(
+    request: InventoryDeviceRequest,
+) -> list[dict[str, Any]]:
+    inventory_config = _compact(
+        {
+            "device_ips": request.device_ips,
+            "device_uuids": request.device_uuids,
+            "site_name": request.site_name,
+            "device_family": request.device_family,
+            "role": request.role,
+            "update_mgmt_ip": True if request.update_mgmt_ip else None,
+            "export_device_list": True if request.export_device_list else None,
+        }
+    )
+    return [{"inventory": [inventory_config]}]
+
+
+def build_network_settings_workflow_config(
+    request: NetworkSettingsRequest,
+) -> list[dict[str, Any]]:
+    network_settings = _compact(
+        {
+            "site_name": request.site_name,
+            "dhcp_servers": request.dhcp_servers,
+            "dns_servers": request.dns_servers,
+            "ntp_servers": request.ntp_servers,
+            "timezone": request.timezone,
+            "message_of_the_day": request.message_of_the_day,
+            "netflow_collector_ip": request.netflow_collector_ip,
+            "netflow_collector_port": request.netflow_collector_port,
+            "snmp_servers": request.snmp_servers,
+            "syslog_servers": request.syslog_servers,
+        }
+    )
+    return [{"network_settings": [network_settings]}]

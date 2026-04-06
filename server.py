@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import json
+import os
+from pathlib import Path
 from typing import Any
 
 import jwt
+import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastmcp import Context, FastMCP
@@ -16,8 +19,12 @@ from models import (
     AssuranceIssueProcessType,
     AssuranceIssueRequest,
     AssuranceIssueStatus,
+    DiscoveryRequest,
+    DiscoveryType,
     FabricDeviceRequest,
     FabricDeviceRole,
+    InventoryDeviceRequest,
+    NetworkSettingsRequest,
     SiteProvisionRequest,
     SiteType,
     TaskSubmissionResponse,
@@ -29,12 +36,15 @@ from runner_engine import RunnerEngine, get_runner_engine
 from settings import Settings, get_settings
 from transformers import (
     build_assurance_issue_workflow_config,
+    build_discovery_workflow_config,
     build_fabric_devices_workflow_config,
+    build_inventory_workflow_config,
+    build_network_settings_workflow_config,
     build_site_workflow_config,
     build_template_workflow_config,
 )
 
-GENERIC_WORKFLOW_MODULES: tuple[str, ...] = (
+DEFAULT_WORKFLOW_MODULES: tuple[str, ...] = (
     "accesspoint_location_workflow_manager",
     "accesspoint_workflow_manager",
     "application_policy_workflow_manager",
@@ -74,6 +84,56 @@ GENERIC_WORKFLOW_MODULES: tuple[str, ...] = (
     "user_role_workflow_manager",
     "wired_campus_automation_workflow_manager",
     "wireless_design_workflow_manager",
+)
+
+
+def _collection_module_dirs(collection_namespace: str) -> tuple[Path, ...]:
+    parts = collection_namespace.split(".")
+    if len(parts) != 2:
+        return ()
+
+    vendor, collection = parts
+    raw_roots: list[str] = []
+    for env_name in ("ANSIBLE_COLLECTIONS_PATH", "ANSIBLE_COLLECTIONS_PATHS"):
+        value = os.getenv(env_name)
+        if value:
+            raw_roots.extend(path for path in value.split(os.pathsep) if path)
+
+    raw_roots.extend(
+        [
+            str(Path.home() / ".ansible" / "collections"),
+            "/usr/share/ansible/collections",
+        ]
+    )
+
+    discovered: list[Path] = []
+    seen: set[Path] = set()
+    for raw_root in raw_roots:
+        root = Path(raw_root).expanduser()
+        candidates = (
+            root / "ansible_collections" / vendor / collection / "plugins" / "modules",
+            root / vendor / collection / "plugins" / "modules",
+        )
+        for candidate in candidates:
+            if candidate.exists() and candidate not in seen:
+                discovered.append(candidate)
+                seen.add(candidate)
+    return tuple(discovered)
+
+
+def _discover_collection_modules(collection_namespace: str, suffix: str) -> tuple[str, ...]:
+    modules: set[str] = set()
+    for modules_dir in _collection_module_dirs(collection_namespace):
+        modules.update(path.stem for path in modules_dir.glob(f"*{suffix}.py"))
+    return tuple(sorted(modules))
+
+
+GENERIC_WORKFLOW_MODULES: tuple[str, ...] = (
+    _discover_collection_modules("cisco.catalystcenter", "_workflow_manager")
+    or DEFAULT_WORKFLOW_MODULES
+)
+GENERIC_PLAYBOOK_GENERATOR_MODULES: tuple[str, ...] = _discover_collection_modules(
+    "cisco.catalystcenter", "_playbook_config_generator"
 )
 
 class NoBufferingMiddleware(BaseHTTPMiddleware):
@@ -126,15 +186,16 @@ mcp = FastMCP(
     version=settings.app_version,
     instructions=(
         "Cisco Catalyst Center IaC MCP server. Tools expose flat arguments and submit "
-        "workflow-manager operations as long-running tasks backed by ansible-runner."
+        "workflow-manager and playbook-config-generator operations as long-running tasks "
+        "backed by ansible-runner."
     ),
     strict_input_validation=True,
 )
 
 
-def _tool_annotations(*, destructive: bool = False) -> ToolAnnotations:
+def _tool_annotations(*, destructive: bool = False, read_only: bool = False) -> ToolAnnotations:
     return ToolAnnotations(
-        readOnlyHint=False,
+        readOnlyHint=read_only,
         destructiveHint=destructive,
         idempotentHint=not destructive,
         openWorldHint=True,
@@ -171,6 +232,34 @@ async def _submit(
     return TaskSubmissionResponse(taskId=submission.task_id)
 
 
+async def _submit_module(
+    *,
+    ctx: Context,
+    tool_name: str,
+    module_name: str,
+    tenant_id: str,
+    module_args: dict[str, Any],
+    destructive: bool = False,
+) -> TaskSubmissionResponse:
+    async def notify(progress: float, total: float, message: str) -> None:
+        await ctx.report_progress(progress, total, message)
+
+    submission = await engine.submit_module(
+        tool_name=tool_name,
+        module_name=module_name,
+        tenant_id=tenant_id,
+        module_args=module_args,
+        progress_callback=notify,
+        destructive=destructive,
+        progress_token=(
+            ctx.request_context.meta.progressToken
+            if ctx.request_context and ctx.request_context.meta
+            else None
+        ),
+    )
+    return TaskSubmissionResponse(taskId=submission.task_id)
+
+
 def _parse_config_json(config_json: str) -> list[dict[str, Any]]:
     try:
         parsed = json.loads(config_json)
@@ -180,6 +269,16 @@ def _parse_config_json(config_json: str) -> list[dict[str, Any]]:
         raise HTTPException(status_code=400, detail="config_json must decode to a list of workflow config objects")
     if not all(isinstance(item, dict) for item in parsed):
         raise HTTPException(status_code=400, detail="config_json must decode to a list of dictionaries")
+    return parsed
+
+
+def _parse_module_args_json(module_args_json: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(module_args_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"module_args_json is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="module_args_json must decode to a dictionary")
     return parsed
 
 
@@ -385,6 +484,124 @@ async def manage_assurance_issues(
     )).model_dump()
 
 
+@mcp.tool(
+    name="discover_devices",
+    description="Initiate network device discovery using IP addresses, ranges, or CDP/LLDP.",
+    annotations=_tool_annotations(),
+)
+async def discover_devices(
+    discovery_name: str,
+    discovery_type: DiscoveryType,
+    ip_address_list: list[str],
+    protocol_order: str = "ssh,telnet",
+    retry: int = 3,
+    timeout: int = 5,
+    enable_password_list: list[str] | None = None,
+    global_credential_id_list: list[str] | None = None,
+    preferred_mgmt_ip_method: str | None = None,
+    tenant_id: str = "default",
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    assert ctx is not None
+    request = DiscoveryRequest(
+        discovery_name=discovery_name,
+        discovery_type=discovery_type,
+        ip_address_list=ip_address_list,
+        protocol_order=protocol_order,
+        retry=retry,
+        timeout=timeout,
+        enable_password_list=enable_password_list,
+        global_credential_id_list=global_credential_id_list,
+        preferred_mgmt_ip_method=preferred_mgmt_ip_method,
+    )
+    return (await _submit(
+        ctx=ctx,
+        tool_name="discover_devices",
+        module_name="discovery_workflow_manager",
+        tenant_id=tenant_id,
+        state=WorkflowState.MERGED,
+        config=build_discovery_workflow_config(request),
+    )).model_dump()
+
+
+@mcp.tool(
+    name="manage_inventory",
+    description="Manage device inventory - update management IPs, assign to sites, or export device lists.",
+    annotations=_tool_annotations(),
+)
+async def manage_inventory(
+    device_ips: list[str] | None = None,
+    device_uuids: list[str] | None = None,
+    site_name: str | None = None,
+    device_family: str | None = None,
+    role: str | None = None,
+    update_mgmt_ip: bool = False,
+    export_device_list: bool = False,
+    tenant_id: str = "default",
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    assert ctx is not None
+    request = InventoryDeviceRequest(
+        device_ips=device_ips,
+        device_uuids=device_uuids,
+        site_name=site_name,
+        device_family=device_family,
+        role=role,
+        update_mgmt_ip=update_mgmt_ip,
+        export_device_list=export_device_list,
+    )
+    return (await _submit(
+        ctx=ctx,
+        tool_name="manage_inventory",
+        module_name="inventory_workflow_manager",
+        tenant_id=tenant_id,
+        state=WorkflowState.MERGED,
+        config=build_inventory_workflow_config(request),
+    )).model_dump()
+
+
+@mcp.tool(
+    name="configure_network_settings",
+    description="Configure network settings for a site including DHCP, DNS, NTP, SNMP, and Syslog servers.",
+    annotations=_tool_annotations(),
+)
+async def configure_network_settings(
+    site_name: str,
+    dhcp_servers: list[str] | None = None,
+    dns_servers: list[str] | None = None,
+    ntp_servers: list[str] | None = None,
+    timezone: str | None = None,
+    message_of_the_day: str | None = None,
+    netflow_collector_ip: str | None = None,
+    netflow_collector_port: int | None = None,
+    snmp_servers: list[str] | None = None,
+    syslog_servers: list[str] | None = None,
+    tenant_id: str = "default",
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    assert ctx is not None
+    request = NetworkSettingsRequest(
+        site_name=site_name,
+        dhcp_servers=dhcp_servers,
+        dns_servers=dns_servers,
+        ntp_servers=ntp_servers,
+        timezone=timezone,
+        message_of_the_day=message_of_the_day,
+        netflow_collector_ip=netflow_collector_ip,
+        netflow_collector_port=netflow_collector_port,
+        snmp_servers=snmp_servers,
+        syslog_servers=syslog_servers,
+    )
+    return (await _submit(
+        ctx=ctx,
+        tool_name="configure_network_settings",
+        module_name="network_settings_workflow_manager",
+        tenant_id=tenant_id,
+        state=WorkflowState.MERGED,
+        config=build_network_settings_workflow_config(request),
+    )).model_dump()
+
+
 def _register_generic_workflow_tools() -> None:
     destructive_module_hints = {"backup_and_restore_workflow_manager", "rma_workflow_manager"}
 
@@ -434,7 +651,51 @@ def _register_generic_workflow_tools() -> None:
         )
 
 
+def _register_generic_playbook_generator_tools() -> None:
+    for module_name in GENERIC_PLAYBOOK_GENERATOR_MODULES:
+        base_name = module_name.removesuffix("_playbook_config_generator")
+        tool_name = f"generate_{base_name}_config"
+
+        def _make_generator_tool(module_name: str, tool_name: str):
+            async def _generator_tool(
+                module_args_json: str | None = None,
+                tenant_id: str = "default",
+                ctx: Context | None = None,
+            ) -> dict[str, Any]:
+                assert ctx is not None
+                module_args = (
+                    _parse_module_args_json(module_args_json)
+                    if module_args_json is not None
+                    else {}
+                )
+                module_args.setdefault("state", WorkflowState.GATHERED.value)
+                return (
+                    await _submit_module(
+                        ctx=ctx,
+                        tool_name=tool_name,
+                        module_name=module_name,
+                        tenant_id=tenant_id,
+                        module_args=module_args,
+                    )
+                ).model_dump()
+
+            return _generator_tool
+
+        generator_tool = _make_generator_tool(module_name, tool_name)
+        description = (
+            f"Read-only wrapper for `{module_name}`. Pass the module arguments as a JSON "
+            "object string. If `state` is omitted, it defaults to `gathered`."
+        )
+        mcp.tool(
+            generator_tool,
+            name=tool_name,
+            description=description,
+            annotations=_tool_annotations(read_only=True),
+        )
+
+
 _register_generic_workflow_tools()
+_register_generic_playbook_generator_tools()
 
 
 @asynccontextmanager
@@ -474,3 +735,21 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+def main() -> None:
+    uvicorn.run(
+        "server:app",
+        host=settings.server_host,
+        port=settings.server_port,
+        workers=settings.server_workers,
+        proxy_headers=settings.proxy_headers,
+        forwarded_allow_ips=settings.forwarded_allow_ips,
+        ssl_certfile=settings.tls_certfile,
+        ssl_keyfile=settings.tls_keyfile,
+        ssl_ca_certs=settings.tls_ca_certs,
+    )
+
+
+if __name__ == "__main__":
+    main()

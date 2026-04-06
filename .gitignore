@@ -4,7 +4,10 @@ __pycache__/
 *.pyc
 *.pyo
 *.log
+*.pptx
 .DS_Store
 .env
 /tmp/
 artifacts/
+deploy/certs/*.pem
+deploy/env/*.env

@@ -92,6 +92,32 @@ class RunnerEngine:
         destructive: bool = False,
         progress_token: str | int | None = None,
     ) -> TaskSubmission:
+        workflow_module_args = {
+            "state": state,
+            "config_verify": True,
+            "config": config,
+        }
+        return await self.submit_module(
+            tool_name=tool_name,
+            module_name=module_name,
+            tenant_id=tenant_id,
+            module_args=workflow_module_args,
+            progress_callback=progress_callback,
+            destructive=destructive,
+            progress_token=progress_token,
+        )
+
+    async def submit_module(
+        self,
+        *,
+        tool_name: str,
+        module_name: str,
+        tenant_id: str,
+        module_args: dict[str, Any],
+        progress_callback: ProgressCallback | None = None,
+        destructive: bool = False,
+        progress_token: str | int | None = None,
+    ) -> TaskSubmission:
         await self.connect()
         task_id = str(uuid4())
         runner_ident = task_id
@@ -99,15 +125,13 @@ class RunnerEngine:
         artifact_dir.mkdir(parents=True, exist_ok=True)
         credentials = self.resolve_credentials(tenant_id)
         primary_module_args = {
+            **module_args,
             "catalystcenter_host": credentials.host,
             "catalystcenter_username": credentials.username,
             "catalystcenter_password": credentials.password,
             "catalystcenter_verify": credentials.verify_ssl,
             "catalystcenter_port": str(credentials.port),
             "catalystcenter_version": credentials.version,
-            "state": state,
-            "config_verify": True,
-            "config": config,
         }
         playbook_name = self._write_runner_files(
             artifact_dir=artifact_dir,

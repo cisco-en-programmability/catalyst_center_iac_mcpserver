@@ -120,6 +120,50 @@ class AssuranceIssueRequest(BaseModel):
     ignore_duration: str | None = None
 
 
+class DiscoveryType(str, Enum):
+    SINGLE = "SINGLE"
+    RANGE = "RANGE"
+    MULTI_RANGE = "MULTI_RANGE"
+    CDP = "CDP"
+    LLDP = "LLDP"
+    CIDR = "CIDR"
+
+
+class DiscoveryRequest(BaseModel):
+    discovery_name: str
+    discovery_type: DiscoveryType
+    ip_address_list: list[str]
+    protocol_order: str = "ssh,telnet"
+    retry: int = 3
+    timeout: int = 5
+    enable_password_list: list[str] | None = None
+    global_credential_id_list: list[str] | None = None
+    preferred_mgmt_ip_method: str | None = None
+
+
+class InventoryDeviceRequest(BaseModel):
+    device_ips: list[str] | None = None
+    device_uuids: list[str] | None = None
+    site_name: str | None = None
+    device_family: str | None = None
+    role: str | None = None
+    update_mgmt_ip: bool = False
+    export_device_list: bool = False
+
+
+class NetworkSettingsRequest(BaseModel):
+    site_name: str
+    dhcp_servers: list[str] | None = None
+    dns_servers: list[str] | None = None
+    ntp_servers: list[str] | None = None
+    timezone: str | None = None
+    message_of_the_day: str | None = None
+    netflow_collector_ip: str | None = None
+    netflow_collector_port: int | None = None
+    snmp_servers: list[str] | None = None
+    syslog_servers: list[str] | None = None
+
+
 class TaskSubmissionResponse(BaseModel):
     taskId: str
     status: Literal["submitted"] = "submitted"

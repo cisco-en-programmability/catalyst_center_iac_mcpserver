@@ -17,6 +17,14 @@ class Settings(BaseSettings):
 
     app_name: str = "catalyst_center_iac_mcp"
     app_version: str = "0.1.0"
+    server_host: str = "0.0.0.0"
+    server_port: int = 8000
+    server_workers: int = 1
+    proxy_headers: bool = True
+    forwarded_allow_ips: str = "*"
+    tls_certfile: str | None = None
+    tls_keyfile: str | None = None
+    tls_ca_certs: str | None = None
     mcp_path: str = "/mcp"
     mcp_transport: Literal["http", "sse"] = "http"
     redis_url: str = "redis://127.0.0.1:6379/0"

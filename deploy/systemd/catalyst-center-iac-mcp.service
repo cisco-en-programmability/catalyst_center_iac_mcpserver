@@ -1,0 +1,22 @@
+[Unit]
+Description=Catalyst Center IaC MCP Server
+After=network-online.target redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=catalystmcp
+Group=catalystmcp
+WorkingDirectory=/opt/catalyst-center-iac-mcp
+EnvironmentFile=/etc/catalyst-center-iac-mcp/catalyst-center-iac-mcp.env
+ExecStart=/opt/catalyst-center-iac-mcp/.venv/bin/catalyst-center-iac-mcp
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/catalyst-center-iac-mcp
+
+[Install]
+WantedBy=multi-user.target
