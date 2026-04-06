@@ -2,6 +2,8 @@
 
 `catalyst_center_iac_mcp` is a stateless FastMCP and FastAPI server that exposes Cisco Catalyst Center Ansible automation as MCP tools for AI agents and other MCP-aware clients.
 
+The Python package and service name are `catalyst_center_iac_mcp`. The GitHub repository name is `catalyst_center_iac_mcpserver`.
+
 The server keeps the AI boundary flat and predictable, then translates those flat tool inputs into the nested payloads required by the `cisco.catalystcenter` Ansible collection. All execution runs through `ansible-runner`, and all task state is persisted in Redis.
 
 ## What It Does
@@ -110,8 +112,8 @@ brew services start redis
 ```bash
 # Clone or download the repository
 cd ~/workspace
-git clone https://github.com/cisco-en-programmability/catalyst_center_iac_mcp.git
-cd catalyst_center_iac_mcp
+git clone https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver.git
+cd catalyst_center_iac_mcpserver
 
 # Create virtual environment
 python3.11 -m venv .venv
@@ -167,7 +169,7 @@ nano ~/.config/catalyst-center-iac-mcp/env
 
 ```bash
 # Activate virtual environment
-cd ~/workspace/catalyst_center_iac_mcp
+cd ~/workspace/catalyst_center_iac_mcpserver
 source .venv/bin/activate
 
 # Load environment variables
@@ -225,8 +227,8 @@ sudo chown -R catalystmcp:catalystmcp \
 
 # Clone repository
 cd /tmp
-git clone https://github.com/cisco-en-programmability/catalyst_center_iac_mcp.git
-sudo cp -r catalyst_center_iac_mcp/* /opt/catalyst-center-iac-mcp/
+git clone https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver.git
+sudo cp -r catalyst_center_iac_mcpserver/* /opt/catalyst-center-iac-mcp/
 sudo chown -R catalystmcp:catalystmcp /opt/catalyst-center-iac-mcp
 
 # Install as catalystmcp user
@@ -332,8 +334,8 @@ For development on any platform:
 
 ```bash
 # Clone repository
-git clone https://github.com/cisco-en-programmability/catalyst_center_iac_mcp.git
-cd catalyst_center_iac_mcp
+git clone https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver.git
+cd catalyst_center_iac_mcpserver
 
 # Create virtual environment
 python3.11 -m venv .venv
@@ -662,7 +664,7 @@ CATALYSTCENTER_PASSWORD=your-password
 
 ```bash
 # macOS
-cd ~/workspace/catalyst_center_iac_mcp
+cd ~/workspace/catalyst_center_iac_mcpserver
 source .venv/bin/activate
 export $(grep -v '^#' ~/.config/catalyst-center-iac-mcp/env | xargs)
 catalyst-center-iac-mcp
