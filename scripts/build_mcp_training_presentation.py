@@ -1,166 +1,181 @@
 from __future__ import annotations
 
+import argparse
+import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
-from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
-from pptx.enum.text import MSO_VERTICAL_ANCHOR, PP_ALIGN
+from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE, MSO_CONNECTOR_TYPE, PP_PLACEHOLDER
+from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
 
 
-OUTPUT = Path("Plan_Provision_Validate_MCP_Enabled_Network_Automation.pptx")
+DEFAULT_TEMPLATE = Path("/Users/pawansi/Downloads/Cisco_PowerPoint_Template_LIGHT_04-01-2026.potx")
+DEFAULT_OUTPUT = Path("Plan_Provision_Validate_MCP_Enabled_Network_Automation.pptx")
 
-SLIDE_W = Inches(13.333)
-SLIDE_H = Inches(7.5)
-
-NAVY = RGBColor(9, 32, 63)
-TEAL = RGBColor(9, 142, 154)
-CYAN = RGBColor(85, 195, 214)
-GOLD = RGBColor(255, 184, 77)
-INK = RGBColor(34, 43, 54)
-MUTED = RGBColor(86, 99, 115)
-PAPER = RGBColor(248, 250, 252)
-CARD = RGBColor(240, 245, 248)
+BLUE = RGBColor(0, 84, 159)
+TEAL = RGBColor(0, 170, 190)
+SKY = RGBColor(223, 242, 248)
+LIGHT = RGBColor(242, 247, 250)
+MID = RGBColor(210, 221, 231)
+DARK = RGBColor(32, 45, 64)
 WHITE = RGBColor(255, 255, 255)
-LINE = RGBColor(210, 220, 230)
+GREEN = RGBColor(44, 134, 92)
+AMBER = RGBColor(242, 176, 52)
 
 
-def set_background(slide, color=WHITE):
-    fill = slide.background.fill
-    fill.solid()
-    fill.fore_color.rgb = color
+def convert_template_path(template_path: Path) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
+    if template_path.suffix.lower() != ".potx":
+        return template_path, None
+
+    temp_dir = tempfile.TemporaryDirectory(prefix="cisco_template_")
+    converted = Path(temp_dir.name) / f"{template_path.stem}.pptx"
+    shutil.copyfile(template_path, converted)
+    with zipfile.ZipFile(converted, "r") as source:
+        package = {name: source.read(name) for name in source.namelist()}
+
+    content_types = package["[Content_Types].xml"].decode("utf-8")
+    content_types = content_types.replace(
+        "application/vnd.openxmlformats-officedocument.presentationml.template.main+xml",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml",
+    )
+
+    with zipfile.ZipFile(converted, "w", zipfile.ZIP_DEFLATED) as target:
+        for name, data in package.items():
+            if name == "[Content_Types].xml":
+                data = content_types.encode("utf-8")
+            target.writestr(name, data)
+
+    return converted, temp_dir
 
 
-def add_background_accents(slide, dark: bool = False):
-    circle_specs = [
-        (-0.7, -0.6, 2.4, CYAN if dark else TEAL, 0.82),
-        (11.7, 5.8, 2.5, GOLD if dark else CYAN, 0.88),
-        (10.6, -0.8, 1.8, TEAL if dark else GOLD, 0.9),
-    ]
-    for left, top, size, color, transparency in circle_specs:
-        shape = slide.shapes.add_shape(
-            MSO_AUTO_SHAPE_TYPE.OVAL, Inches(left), Inches(top), Inches(size), Inches(size)
+def remove_all_slides(prs: Presentation):
+    for index in range(len(prs.slides) - 1, -1, -1):
+        slide_id = prs.slides._sldIdLst[index]
+        relationship_id = slide_id.rId
+        prs.part.drop_rel(relationship_id)
+        del prs.slides._sldIdLst[index]
+
+
+def get_layout(prs: Presentation, layout_name: str):
+    for layout in prs.slide_layouts:
+        if layout.name == layout_name:
+            return layout
+    raise ValueError(f"Layout '{layout_name}' not found in template.")
+
+
+def title_placeholder(slide):
+    if slide.shapes.title is not None:
+        return slide.shapes.title
+    for placeholder in slide.placeholders:
+        ph_type = placeholder.placeholder_format.type
+        if ph_type in {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}:
+            return placeholder
+    raise ValueError("Slide has no title placeholder.")
+
+
+def content_placeholders(slide):
+    placeholders = []
+    for placeholder in slide.placeholders:
+        ph_type = placeholder.placeholder_format.type
+        if ph_type in {
+            PP_PLACEHOLDER.TITLE,
+            PP_PLACEHOLDER.CENTER_TITLE,
+            PP_PLACEHOLDER.FOOTER,
+            PP_PLACEHOLDER.SLIDE_NUMBER,
+            PP_PLACEHOLDER.DATE,
+        }:
+            continue
+        placeholders.append(placeholder)
+    return sorted(placeholders, key=lambda item: (item.top, item.left))
+
+
+def clear_text_frame(text_frame):
+    text_frame.clear()
+    text_frame.word_wrap = True
+    return text_frame
+
+
+def set_paragraph_runs(paragraph, text: str, font_size: int = 18, bold: bool = False, color: RGBColor | None = None):
+    paragraph.text = ""
+    run = paragraph.add_run()
+    run.text = text
+    run.font.size = Pt(font_size)
+    run.font.bold = bold
+    if color is not None:
+        run.font.color.rgb = color
+
+
+def fill_placeholder_lines(
+    placeholder,
+    lines: list[str],
+    *,
+    font_size: int = 18,
+    first_line_bold: bool = False,
+    color: RGBColor | None = None,
+    center: bool = False,
+):
+    text_frame = clear_text_frame(placeholder.text_frame)
+    for index, line in enumerate(lines):
+        paragraph = text_frame.paragraphs[0] if index == 0 else text_frame.add_paragraph()
+        if center:
+            paragraph.alignment = PP_ALIGN.CENTER
+        set_paragraph_runs(
+            paragraph,
+            line,
+            font_size=font_size,
+            bold=first_line_bold and index == 0,
+            color=color,
         )
-        shape.fill.solid()
-        shape.fill.fore_color.rgb = color
-        shape.fill.transparency = transparency
-        shape.line.fill.background()
 
 
-def add_content_frame(slide, title: str, subtitle: str, section: str | None = None):
-    add_background_accents(slide)
-    band = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(0), Inches(0), SLIDE_W, Inches(0.22)
-    )
-    band.fill.solid()
-    band.fill.fore_color.rgb = TEAL
-    band.line.fill.background()
-
-    if section:
-        pill = slide.shapes.add_shape(
-            MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(0.72), Inches(0.42), Inches(2.5), Inches(0.42)
-        )
-        pill.fill.solid()
-        pill.fill.fore_color.rgb = CARD
-        pill.line.fill.background()
-        tf = pill.text_frame
-        tf.paragraphs[0].text = section.upper()
-        tf.paragraphs[0].font.name = "Aptos"
-        tf.paragraphs[0].font.size = Pt(11)
-        tf.paragraphs[0].font.bold = True
-        tf.paragraphs[0].font.color.rgb = TEAL
-
-    title_box = slide.shapes.add_textbox(Inches(0.72), Inches(0.95), Inches(9.8), Inches(0.7))
-    p = title_box.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = title
-    run.font.name = "Aptos Display"
-    run.font.size = Pt(28)
-    run.font.bold = True
-    run.font.color.rgb = NAVY
-
-    sub_box = slide.shapes.add_textbox(Inches(0.72), Inches(1.58), Inches(10.8), Inches(0.45))
-    p = sub_box.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = subtitle
-    run.font.name = "Aptos"
-    run.font.size = Pt(13)
-    run.font.color.rgb = MUTED
-
-    accent = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(0.72), Inches(2.0), Inches(1.15), Inches(0.06)
-    )
-    accent.fill.solid()
-    accent.fill.fore_color.rgb = GOLD
-    accent.line.fill.background()
+def set_title(slide, text: str):
+    title = title_placeholder(slide)
+    text_frame = clear_text_frame(title.text_frame)
+    set_paragraph_runs(text_frame.paragraphs[0], text, font_size=28, bold=True)
 
 
-def add_footer(slide, index: int, total: int):
-    footer = slide.shapes.add_textbox(Inches(0.72), Inches(7.0), Inches(12.0), Inches(0.24))
-    p = footer.text_frame.paragraphs[0]
-    p.alignment = PP_ALIGN.RIGHT
-    run = p.add_run()
-    run.text = f"Customer session | {index:02d}/{total:02d}"
-    run.font.name = "Aptos"
-    run.font.size = Pt(9)
-    run.font.color.rgb = MUTED
+def add_textbox(
+    slide,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    lines: list[str],
+    *,
+    font_size: int = 16,
+    bold_first: bool = False,
+    color: RGBColor = DARK,
+    align: PP_ALIGN = PP_ALIGN.LEFT,
+):
+    textbox = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
+    text_frame = textbox.text_frame
+    text_frame.word_wrap = True
+    text_frame.vertical_anchor = MSO_ANCHOR.TOP
+    for index, line in enumerate(lines):
+        paragraph = text_frame.paragraphs[0] if index == 0 else text_frame.add_paragraph()
+        paragraph.alignment = align
+        set_paragraph_runs(paragraph, line, font_size=font_size, bold=bold_first and index == 0, color=color)
+    return textbox
 
 
-def add_section_divider(slide, title: str, subtitle: str, kicker: str):
-    set_background(slide, NAVY)
-    add_background_accents(slide, dark=True)
-
-    strap = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(0.9), Inches(1.1), Inches(3.0), Inches(0.48)
-    )
-    strap.fill.solid()
-    strap.fill.fore_color.rgb = TEAL
-    strap.line.fill.background()
-    p = strap.text_frame.paragraphs[0]
-    p.alignment = PP_ALIGN.CENTER
-    run = p.add_run()
-    run.text = kicker.upper()
-    run.font.name = "Aptos"
-    run.font.size = Pt(11)
-    run.font.bold = True
-    run.font.color.rgb = WHITE
-
-    title_box = slide.shapes.add_textbox(Inches(0.9), Inches(2.0), Inches(10.5), Inches(1.1))
-    p = title_box.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = title
-    run.font.name = "Aptos Display"
-    run.font.size = Pt(30)
-    run.font.bold = True
-    run.font.color.rgb = WHITE
-
-    sub_box = slide.shapes.add_textbox(Inches(0.9), Inches(3.1), Inches(11.2), Inches(0.8))
-    p = sub_box.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = subtitle
-    run.font.name = "Aptos"
-    run.font.size = Pt(18)
-    run.font.color.rgb = RGBColor(225, 236, 245)
-
-    quote = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(0.9), Inches(4.7), Inches(11.5), Inches(1.2)
-    )
-    quote.fill.solid()
-    quote.fill.fore_color.rgb = RGBColor(18, 53, 93)
-    quote.line.color.rgb = CYAN
-    tf = quote.text_frame
-    tf.vertical_anchor = MSO_VERTICAL_ANCHOR.MIDDLE
-    p = tf.paragraphs[0]
-    p.alignment = PP_ALIGN.CENTER
-    run = p.add_run()
-    run.text = "Use the next section to turn AI interest into an operating model the customer can trust."
-    run.font.name = "Aptos"
-    run.font.size = Pt(18)
-    run.font.color.rgb = WHITE
-
-
-def add_card(slide, left, top, width, height, title, body, fill=CARD, title_color=NAVY, body_color=INK):
+def add_card(
+    slide,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    title: str,
+    body_lines: list[str],
+    *,
+    fill_color: RGBColor = WHITE,
+    line_color: RGBColor = MID,
+    title_color: RGBColor = BLUE,
+    body_color: RGBColor = DARK,
+):
     shape = slide.shapes.add_shape(
         MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
         Inches(left),
@@ -169,867 +184,687 @@ def add_card(slide, left, top, width, height, title, body, fill=CARD, title_colo
         Inches(height),
     )
     shape.fill.solid()
-    shape.fill.fore_color.rgb = fill
-    shape.line.color.rgb = LINE
+    shape.fill.fore_color.rgb = fill_color
+    shape.line.color.rgb = line_color
 
-    title_box = slide.shapes.add_textbox(
-        Inches(left + 0.2), Inches(top + 0.16), Inches(width - 0.4), Inches(0.5)
-    )
-    p = title_box.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = title
-    run.font.name = "Aptos"
-    run.font.size = Pt(17)
-    run.font.bold = True
-    run.font.color.rgb = title_color
-
-    body_box = slide.shapes.add_textbox(
-        Inches(left + 0.2), Inches(top + 0.68), Inches(width - 0.4), Inches(height - 0.88)
-    )
-    tf = body_box.text_frame
-    tf.word_wrap = True
-    p = tf.paragraphs[0]
-    run = p.add_run()
-    run.text = body
-    run.font.name = "Aptos"
-    run.font.size = Pt(13)
-    run.font.color.rgb = body_color
+    add_textbox(slide, left + 0.16, top + 0.14, width - 0.32, 0.35, [title], font_size=18, bold_first=True, color=title_color)
+    add_textbox(slide, left + 0.16, top + 0.55, width - 0.32, height - 0.7, body_lines, font_size=12, color=body_color)
     return shape
 
 
-def add_bullet_box(slide, left, top, width, height, title, bullets, fill=WHITE):
-    add_card(slide, left, top, width, height, title, "", fill=fill)
-    body_box = slide.shapes.add_textbox(
-        Inches(left + 0.2), Inches(top + 0.62), Inches(width - 0.4), Inches(height - 0.82)
+def add_step_card(slide, left: float, top: float, step: str, title: str, body: str, fill_color: RGBColor):
+    add_card(
+        slide,
+        left,
+        top,
+        2.2,
+        1.45,
+        f"{step}. {title}",
+        [body],
+        fill_color=fill_color,
+        line_color=fill_color,
+        title_color=DARK,
     )
-    tf = body_box.text_frame
-    tf.word_wrap = True
-    for idx, bullet in enumerate(bullets):
-        p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
-        p.text = bullet
-        p.font.name = "Aptos"
-        p.font.size = Pt(13)
-        p.font.color.rgb = INK
-        p.level = 0
-        p.space_after = Pt(10)
 
 
-def add_metric_card(slide, left, top, width, height, value, label, note):
-    shape = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
-        Inches(left),
-        Inches(top),
-        Inches(width),
-        Inches(height),
+def add_arrow(slide, x1: float, y1: float, x2: float, y2: float, color: RGBColor = BLUE):
+    connector = slide.shapes.add_connector(
+        MSO_CONNECTOR_TYPE.STRAIGHT,
+        Inches(x1),
+        Inches(y1),
+        Inches(x2),
+        Inches(y2),
     )
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = WHITE
-    shape.line.color.rgb = LINE
-
-    big = slide.shapes.add_textbox(Inches(left + 0.18), Inches(top + 0.16), Inches(width - 0.36), Inches(0.55))
-    p = big.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = value
-    run.font.name = "Aptos Display"
-    run.font.size = Pt(24)
-    run.font.bold = True
-    run.font.color.rgb = TEAL
-
-    mid = slide.shapes.add_textbox(Inches(left + 0.18), Inches(top + 0.75), Inches(width - 0.36), Inches(0.3))
-    p = mid.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = label
-    run.font.name = "Aptos"
-    run.font.size = Pt(12)
-    run.font.bold = True
-    run.font.color.rgb = NAVY
-
-    low = slide.shapes.add_textbox(Inches(left + 0.18), Inches(top + 1.08), Inches(width - 0.36), Inches(0.42))
-    p = low.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = note
-    run.font.name = "Aptos"
-    run.font.size = Pt(10)
-    run.font.color.rgb = MUTED
+    connector.line.color.rgb = color
+    connector.line.width = Pt(2)
+    connector.line.end_arrowhead = True
+    return connector
 
 
-def add_process_row(slide, top, steps):
-    left = 0.78
-    width = 2.35
-    gap = 0.38
-    for idx, (title, body) in enumerate(steps):
-        x = left + idx * (width + gap)
-        add_card(slide, x, top, width, 1.85, title, body, fill=WHITE)
+def add_table_slide(slide, rows: int, cols: int, data: list[list[str]], col_widths: list[float]):
+    table_placeholder = None
+    for placeholder in content_placeholders(slide):
+        if placeholder.placeholder_format.type == PP_PLACEHOLDER.TABLE:
+            table_placeholder = placeholder
+            break
+    if table_placeholder is None:
+        raise ValueError("Slide has no table placeholder.")
 
-        badge = slide.shapes.add_shape(
-            MSO_AUTO_SHAPE_TYPE.OVAL, Inches(x + 0.16), Inches(top - 0.16), Inches(0.42), Inches(0.42)
-        )
-        badge.fill.solid()
-        badge.fill.fore_color.rgb = TEAL
-        badge.line.fill.background()
-        p = badge.text_frame.paragraphs[0]
-        p.alignment = PP_ALIGN.CENTER
-        run = p.add_run()
-        run.text = str(idx + 1)
-        run.font.name = "Aptos"
-        run.font.size = Pt(13)
-        run.font.bold = True
-        run.font.color.rgb = WHITE
+    graphic_frame = table_placeholder.insert_table(rows, cols)
+    table = graphic_frame.table
+    for col_idx, col_width in enumerate(col_widths):
+        table.columns[col_idx].width = Inches(col_width)
 
-        if idx < len(steps) - 1:
-            arrow = slide.shapes.add_shape(
-                MSO_AUTO_SHAPE_TYPE.CHEVRON,
-                Inches(x + width + 0.06),
-                Inches(top + 0.62),
-                Inches(0.22),
-                Inches(0.42),
-            )
-            arrow.fill.solid()
-            arrow.fill.fore_color.rgb = GOLD
-            arrow.line.fill.background()
+    for row_idx in range(rows):
+        for col_idx in range(cols):
+            cell = table.cell(row_idx, col_idx)
+            cell.text = data[row_idx][col_idx]
+            if row_idx == 0:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = BLUE
+            else:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = WHITE if row_idx % 2 else LIGHT
+            paragraph = cell.text_frame.paragraphs[0]
+            paragraph.alignment = PP_ALIGN.LEFT
+            if row_idx == 0:
+                set_paragraph_runs(paragraph, data[row_idx][col_idx], font_size=14, bold=True, color=WHITE)
+            else:
+                set_paragraph_runs(paragraph, data[row_idx][col_idx], font_size=12, color=DARK)
+            cell.margin_left = Inches(0.08)
+            cell.margin_right = Inches(0.08)
+            cell.margin_top = Inches(0.05)
+            cell.margin_bottom = Inches(0.05)
 
 
-def add_architecture_diagram(slide):
-    blocks = [
-        (0.75, 2.45, 1.9, 1.1, "AI Client", "ChatGPT\nCodex\nMCP client"),
-        (2.95, 2.45, 2.0, 1.1, "MCP Server", "FastMCP\nFastAPI\nHTTP/SSE"),
-        (5.25, 2.45, 2.15, 1.1, "Translation Layer", "Flat tool input\nTyped models\nSchema control"),
-        (7.7, 2.45, 2.0, 1.1, "Execution Engine", "ansible-runner\nrun_async()\nRedis state"),
-        (10.0, 2.45, 2.35, 1.1, "Catalyst Center", "cisco.catalystcenter\nworkflow_manager\ncontroller APIs"),
+def add_title_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title Slide 2, Two Speakers"))
+    set_title(slide, "Plan, Provision, Validate")
+    placeholders = content_placeholders(slide)
+    fill_placeholder_lines(placeholders[0], ["MCP-Enabled Network Automation for Catalyst Center teams"], font_size=20)
+    fill_placeholder_lines(
+        placeholders[1],
+        ["Audience", "Catalyst Center operators and architects"],
+        font_size=18,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[2],
+        ["Starting point", "Strong Catalyst Center knowledge, little MCP or AI background"],
+        font_size=18,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[3],
+        ["Outcome", "A practical model for exposing trusted automation to AI clients"],
+        font_size=16,
+        first_line_bold=True,
+    )
+
+
+def add_agenda_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title, Subtitle, Table 1"))
+    set_title(slide, "Session Agenda")
+    fill_placeholder_lines(content_placeholders(slide)[0], ["45 minutes, built for Catalyst Center practitioners"], font_size=18)
+    agenda_rows = [
+        ["Section", "Focus", "Minutes"],
+        ["1. Why this matters", "What MCP solves and why existing automation is not enough by itself", "8"],
+        ["2. Plan", "Exporting current Catalyst Center intent into reusable YAML", "8"],
+        ["3. Provision", "Using safe tool contracts over workflow_manager modules", "10"],
+        ["4. Validate and operate", "Tasks, progress, guardrails, and production deployment", "12"],
+        ["5. Customer next steps", "Use cases, adoption path, and Q&A", "7"],
     ]
-    for left, top, width, height, title, body in blocks:
-        add_card(slide, left, top, width, height, title, body, fill=WHITE)
-
-    for x in [2.68, 4.98, 7.45, 9.74]:
-        arrow = slide.shapes.add_shape(
-            MSO_AUTO_SHAPE_TYPE.RIGHT_ARROW, Inches(x), Inches(2.82), Inches(0.2), Inches(0.32)
-        )
-        arrow.fill.solid()
-        arrow.fill.fore_color.rgb = GOLD
-        arrow.line.fill.background()
-
-    add_metric_card(slide, 0.9, 4.55, 2.7, 1.65, "Stateless", "API layer", "Safe for horizontal scale and tenant isolation")
-    add_metric_card(slide, 3.95, 4.55, 2.7, 1.65, "Progress", "Long-running tasks", "taskId, polling, and progressToken updates")
-    add_metric_card(slide, 7.0, 4.55, 2.7, 1.65, "Guarded", "Enterprise safety", "Read-only hints, confirmation gates, typed inputs")
-    add_metric_card(slide, 10.05, 4.55, 2.3, 1.65, "Ready", "Identity model", "OAuth 2.1 federation-ready design")
+    add_table_slide(slide, len(agenda_rows), 3, agenda_rows, [2.8, 8.0, 1.2])
 
 
-def add_translation_visual(slide):
-    add_card(
-        slide,
-        0.9,
-        2.35,
-        3.75,
-        3.15,
-        "AI-facing tool input",
-        "site_type: building\nname: BLD23\nparent_path: Global/USA/SAN JOSE\nlatitude: 37.39819\nlongitude: -121.91297\nrf_model: Cubes And Walled Offices",
-        fill=WHITE,
+def add_segue(prs: Presentation, title: str):
+    slide = prs.slides.add_slide(get_layout(prs, "Segue 1"))
+    set_title(slide, title)
+
+
+def add_existing_assets_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title, Subtitle, 2 Columns"))
+    set_title(slide, "You already own most of the automation")
+    placeholders = content_placeholders(slide)
+    fill_placeholder_lines(
+        placeholders[0],
+        ["The gap is not Catalyst Center capability. The gap is a safe contract between people, AI, and your existing automation."],
+        font_size=16,
     )
-
-    arrow = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.CHEVRON, Inches(4.95), Inches(3.5), Inches(0.42), Inches(0.58)
-    )
-    arrow.fill.solid()
-    arrow.fill.fore_color.rgb = GOLD
-    arrow.line.fill.background()
-
-    add_card(
-        slide,
-        5.65,
-        2.35,
-        3.1,
-        3.15,
-        "Translation layer",
-        "Pydantic models validate inputs.\nTransformers rebuild the nested config expected by workflow_manager modules.\nThe LLM never has to invent the Cisco payload shape.",
-        fill=CARD,
-    )
-
-    arrow = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.CHEVRON, Inches(9.02), Inches(3.5), Inches(0.42), Inches(0.58)
-    )
-    arrow.fill.solid()
-    arrow.fill.fore_color.rgb = GOLD
-    arrow.line.fill.background()
-
-    add_card(
-        slide,
-        9.72,
-        2.35,
-        2.65,
-        3.15,
-        "Module payload",
-        "config:\n- site:\n    building:\n      name: BLD23\n      parent_name: Global/USA/SAN JOSE\n      latitude: 37.39819\n      longitude: -121.91297\n  type: building",
-        fill=WHITE,
-    )
-
-    add_card(
-        slide,
-        0.9,
-        5.8,
-        11.45,
-        0.78,
-        "Why customers care",
-        "Flat schemas reduce AI error rates, improve repeatability, and let teams keep their existing Ansible content exactly where it already works.",
-        fill=RGBColor(231, 247, 248),
-        title_color=TEAL,
-    )
-
-
-def add_prompt_examples(slide):
-    add_card(
-        slide,
-        0.9,
-        2.25,
-        5.4,
-        3.95,
-        "What the operator says",
-        "Pull the site hierarchy under Global/USA/SAN JOSE as YAML.\n\nReapply this config using site_workflow_manager.\n\nCreate SAMPLE with one building and two floors.\n\nShow me the task logs.",
-        fill=WHITE,
-    )
-    add_card(
-        slide,
-        6.65,
-        2.25,
-        5.7,
-        3.95,
-        "What the AI must do",
-        "1. Choose a config generator for pull operations.\n2. Convert user intent into flat MCP tool inputs.\n3. Submit long-running tasks and return a taskId.\n4. Poll /tasks/get and present logs and artifacts.\n5. Re-pull state for validation after change.",
-        fill=CARD,
-    )
-
-
-def add_code_card(slide, left, top, width, height, title, code, fill=WHITE):
-    shape = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
-        Inches(left),
-        Inches(top),
-        Inches(width),
-        Inches(height),
-    )
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = fill
-    shape.line.color.rgb = LINE
-
-    title_box = slide.shapes.add_textbox(
-        Inches(left + 0.2), Inches(top + 0.16), Inches(width - 0.4), Inches(0.45)
-    )
-    p = title_box.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = title
-    run.font.name = "Aptos"
-    run.font.size = Pt(16)
-    run.font.bold = True
-    run.font.color.rgb = NAVY
-
-    code_box = slide.shapes.add_textbox(
-        Inches(left + 0.2), Inches(top + 0.62), Inches(width - 0.4), Inches(height - 0.82)
-    )
-    tf = code_box.text_frame
-    tf.word_wrap = True
-    p = tf.paragraphs[0]
-    run = p.add_run()
-    run.text = code
-    run.font.name = "Courier New"
-    run.font.size = Pt(10)
-    run.font.color.rgb = INK
-
-
-def build():
-    prs = Presentation()
-    prs.slide_width = SLIDE_W
-    prs.slide_height = SLIDE_H
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, NAVY)
-    add_background_accents(slide, dark=True)
-
-    strap = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(0.78), Inches(0.72), Inches(3.25), Inches(0.42)
-    )
-    strap.fill.solid()
-    strap.fill.fore_color.rgb = TEAL
-    strap.line.fill.background()
-    p = strap.text_frame.paragraphs[0]
-    p.alignment = PP_ALIGN.CENTER
-    run = p.add_run()
-    run.text = "45-MINUTE CUSTOMER SESSION"
-    run.font.name = "Aptos"
-    run.font.size = Pt(11)
-    run.font.bold = True
-    run.font.color.rgb = WHITE
-
-    title = slide.shapes.add_textbox(Inches(0.78), Inches(1.45), Inches(8.8), Inches(1.35))
-    p = title.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = "Plan, Provision, Validate:\nMCP-Enabled Network Automation"
-    run.font.name = "Aptos Display"
-    run.font.size = Pt(28)
-    run.font.bold = True
-    run.font.color.rgb = WHITE
-
-    sub = slide.shapes.add_textbox(Inches(0.82), Inches(3.02), Inches(8.6), Inches(0.8))
-    p = sub.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = (
-        "How to expose existing Ansible, Terraform, and Python automation as safe AI-callable tools "
-        "without rewriting what already works."
-    )
-    run.font.name = "Aptos"
-    run.font.size = Pt(16)
-    run.font.color.rgb = RGBColor(226, 235, 242)
-
-    callout = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(8.95), Inches(1.2), Inches(3.4), Inches(4.8)
-    )
-    callout.fill.solid()
-    callout.fill.fore_color.rgb = RGBColor(18, 53, 93)
-    callout.line.color.rgb = CYAN
-
-    add_metric_card(slide, 9.2, 1.55, 2.9, 1.35, "No rewrites", "Keep current automation", "Wrap what exists instead of starting over")
-    add_metric_card(slide, 9.2, 3.0, 2.9, 1.35, "Predictable AI", "Tool contracts", "Schemas, task IDs, and guardrails create trust")
-    add_metric_card(slide, 9.2, 4.45, 2.9, 1.35, "Closed loop", "Plan to validation", "Export, provision, validate, and capture artifacts")
-
-    audience = slide.shapes.add_textbox(Inches(0.82), Inches(5.4), Inches(7.1), Inches(0.7))
-    p = audience.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = "Audience: NetOps leaders, platform teams, automation architects, and customer engineering teams"
-    run.font.name = "Aptos"
-    run.font.size = Pt(13)
-    run.font.color.rgb = RGBColor(226, 235, 242)
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Executive Summary", "The three messages the customer should leave with", section="Opening")
-    add_metric_card(slide, 0.9, 2.55, 3.7, 1.85, "1", "You already own the automation", "Ansible playbooks, Terraform plans, and SDK scripts remain the system of execution.")
-    add_metric_card(slide, 4.82, 2.55, 3.7, 1.85, "2", "MCP is the control contract", "It gives AI a typed, discoverable, governable way to invoke those assets.")
-    add_metric_card(slide, 8.74, 2.55, 3.7, 1.85, "3", "Plan-Provision-Validate becomes one loop", "The same toolchain can export state, apply change, and verify the outcome.")
-    add_card(
-        slide,
-        0.9,
-        4.85,
-        11.45,
-        1.15,
-        "Suggested time split",
-        "10 minutes on the operating model, 15 minutes on server architecture, 10 minutes on the live demo, 10 minutes for customer questions and rollout discussion.",
-        fill=WHITE,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Why This Matters Now", "Most enterprise teams have automation assets, but not a clean orchestration boundary", section="Context")
-    add_bullet_box(
-        slide,
-        0.9,
-        2.3,
-        5.4,
-        3.8,
-        "What teams already have",
+    fill_placeholder_lines(
+        placeholders[1],
         [
-            "Ansible playbooks for provisioning and brownfield collection",
-            "Terraform plans for cloud edge, compute, and platform resources",
-            "Python SDK scripts for edge cases and API gaps",
-            "Validation jobs in pyATS, Genie, or custom test harnesses",
+            "What teams already have",
+            "Catalyst Center design, templates, assurance, and provisioning workflows",
+            "Ansible collections, playbooks, Python helpers, and approved change processes",
+            "Site standards, network settings baselines, and operating runbooks",
         ],
-        fill=WHITE,
+        font_size=15,
+        first_line_bold=True,
     )
-    add_bullet_box(
-        slide,
-        6.55,
-        2.3,
-        5.8,
-        3.8,
-        "What still breaks down",
+    fill_placeholder_lines(
+        placeholders[2],
         [
-            "Inputs are inconsistent across tools and handoffs",
-            "Operators translate intent manually between plan and execution",
-            "Change and validation are often disconnected",
-            "AI assistants cannot safely orchestrate scripts without a contract",
+            "What is still hard",
+            "Choosing the right automation path from a natural-language request",
+            "Shielding AI clients from nested module payloads and unsafe raw inputs",
+            "Handling approvals, progress, retries, and audit for long-running changes",
         ],
-        fill=WHITE,
+        font_size=15,
+        first_line_bold=True,
     )
+
+
+def add_mcp_plain_english_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title Only 1"))
+    set_title(slide, "MCP in Plain English")
+    add_textbox(
+        slide,
+        0.35,
+        1.0,
+        12.2,
+        0.5,
+        ["Think of MCP as the tool contract that lets an AI client use your real automation without inventing API calls."],
+        font_size=18,
+    )
+    add_card(slide, 0.45, 1.8, 2.9, 2.1, "1. User request", ["The operator asks for an outcome, such as exporting site intent or provisioning a building."], fill_color=LIGHT)
+    add_card(slide, 3.55, 1.8, 2.9, 2.1, "2. MCP tool", ["The server advertises approved tools with typed inputs and clear descriptions."], fill_color=LIGHT)
+    add_card(slide, 6.65, 1.8, 2.9, 2.1, "3. Real execution", ["The MCP server runs Ansible, SDK, or Terraform logic that already exists in your environment."], fill_color=LIGHT)
+    add_card(slide, 9.75, 1.8, 2.9, 2.1, "4. Controlled result", ["The client gets task status, progress, artifacts, and final outputs instead of a guess."], fill_color=LIGHT)
+    add_arrow(slide, 3.2, 2.85, 3.5, 2.85)
+    add_arrow(slide, 6.3, 2.85, 6.6, 2.85)
+    add_arrow(slide, 9.4, 2.85, 9.7, 2.85)
     add_card(
         slide,
-        0.9,
-        6.25,
-        11.45,
-        0.62,
-        "Key message",
-        "The gap is no longer automation coverage. The gap is a reliable interface that connects automation, AI, and operator trust.",
-        fill=RGBColor(231, 247, 248),
-        title_color=TEAL,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "From Tool Sprawl to Operating Model", "What changes when MCP becomes the boundary layer", section="Model")
-    add_bullet_box(
-        slide,
-        0.9,
-        2.3,
-        5.2,
-        3.85,
-        "Before MCP",
-        [
-            "Operators choose among scripts, playbooks, and notebooks",
-            "Every handoff requires format conversion or tribal knowledge",
-            "AI outputs text, but not safely executable operations",
-            "Logging and artifacts are inconsistent across tools",
-        ],
-        fill=WHITE,
-    )
-    add_bullet_box(
-        slide,
-        7.0,
-        2.3,
-        5.35,
-        3.85,
-        "With MCP",
-        [
-            "AI discovers tools with typed schemas and clear descriptions",
-            "The server translates flat intent into automation-native payloads",
-            "Every long-running job returns a taskId and progress events",
-            "Validation and artifacts are part of the workflow, not an afterthought",
-        ],
-        fill=CARD,
-    )
-    arrow = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.RIGHT_ARROW, Inches(6.2), Inches(3.8), Inches(0.48), Inches(0.55)
-    )
-    arrow.fill.solid()
-    arrow.fill.fore_color.rgb = GOLD
-    arrow.line.fill.background()
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "What MCP Is, and What It Is Not", "Set the customer's mental model early", section="Model")
-    add_bullet_box(
-        slide,
-        0.9,
-        2.25,
-        5.45,
-        3.95,
-        "MCP is",
-        [
-            "A protocol for exposing tools, prompts, and resources to AI systems",
-            "A way to standardize tool discovery, invocation, and outputs",
-            "A boundary that lets you wrap proven automation instead of replacing it",
-            "A practical path to compose export, provision, and validation steps",
-        ],
-        fill=WHITE,
-    )
-    add_bullet_box(
-        slide,
-        6.65,
-        2.25,
-        5.7,
-        3.95,
-        "MCP is not",
-        [
-            "A replacement for Ansible, Terraform, or Python",
-            "A license to let an LLM invent controller payloads on its own",
-            "A shortcut around approvals, validation, or auditability",
-            "A reason to rewrite working automation from scratch",
-        ],
-        fill=WHITE,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "The Critical Design Pattern", "Flatten the AI boundary, hide the nested automation payloads", section="Model")
-    add_translation_visual(slide)
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    add_section_divider(
-        slide,
-        "Architecture and Runtime",
-        "Move from concept to implementation: transport, tasks, translation, and execution.",
-        "Part 2",
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Catalyst Center MCP Server Architecture", "The implementation pattern behind this customer-ready reference server", section="Architecture")
-    add_architecture_diagram(slide)
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Tool Surface: High-Level and Full-Fidelity", "Use specialized tools for common workflows and generic wrappers for collection coverage", section="Architecture")
-    add_metric_card(slide, 0.9, 2.25, 2.4, 1.65, "45", "Total MCP tools", "Current implementation count exposed by the server")
-    add_metric_card(slide, 3.55, 2.25, 2.4, 1.65, "6", "Specialized tools", "Opinionated tools with flat arguments for common tasks")
-    add_metric_card(slide, 6.2, 2.25, 2.4, 1.65, "39", "Generic tools", "One wrapper per installed workflow_manager module")
-    add_metric_card(slide, 8.85, 2.25, 3.5, 1.65, "Preferred pattern", "Start specialized, fall back generic", "Give the AI the simplest safe tool first, then full module access when needed")
-    add_bullet_box(
-        slide,
-        0.9,
-        4.25,
-        5.55,
         2.2,
-        "Specialized tools in this server",
-        [
-            "provision_site and delete_site",
-            "deploy_template",
-            "onboard_fabric_devices and reprovision_fabric_device",
-            "manage_assurance_issues",
-        ],
-        fill=WHITE,
-    )
-    add_bullet_box(
-        slide,
-        6.8,
-        4.25,
-        5.55,
-        2.2,
-        "Generic workflow families",
-        [
-            "Site, template, inventory, discovery, and network settings",
-            "SD-Access fabric sites, devices, virtual networks, transits, and host onboarding",
-            "Assurance, backup, reports, SWIM, user-role, wired campus automation, and more",
-        ],
-        fill=CARD,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Long-Running Task Lifecycle", "The November 2025 task primitive is what makes AI automation operationally usable", section="Architecture")
-    add_process_row(
-        slide,
-        2.45,
-        [
-            ("Submit", "Tool returns taskId and status=submitted immediately."),
-            ("Execute", "ansible-runner starts asynchronously with workflow_manager inputs."),
-            ("Track", "Progress updates flow through progressToken and Redis state."),
-            ("Poll", "Client calls /tasks/get until the run completes or fails."),
-        ],
-    )
-    add_card(
-        slide,
-        0.9,
-        5.05,
-        11.45,
-        1.15,
-        "Operational value",
-        "This pattern keeps the UI responsive, supports brownfield jobs that take minutes, and gives operators a reliable place to inspect logs, artifacts, and final controller results.",
-        fill=WHITE,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Enterprise Guardrails", "Customer readiness depends on control boundaries, not just code coverage", section="Architecture")
-    add_metric_card(slide, 0.9, 2.35, 2.65, 1.75, "Typed", "Input controls", "Python type hints, Literal, and Enum constrain the tool surface")
-    add_metric_card(slide, 3.75, 2.35, 2.65, 1.75, "Read-only", "Config generation", "Export tools should be clearly marked and preferred for pull operations")
-    add_metric_card(slide, 6.6, 2.35, 2.65, 1.75, "Confirmed", "Destructive operations", "delete_site and reprovision flows require explicit human confirmation")
-    add_metric_card(slide, 9.45, 2.35, 2.9, 1.75, "Auditable", "State and artifacts", "Redis state plus ansible-runner artifacts preserve execution history")
-    add_bullet_box(
-        slide,
-        0.9,
         4.45,
-        11.45,
-        1.95,
-        "Architecture guardrails to call out verbally",
-        [
-            "Use HTTP/SSE for multi-tenant delivery and disable proxy buffering.",
-            "Keep the API layer stateless so instances can scale horizontally.",
-            "Design for OAuth 2.1 identity federation even if the first lab uses local credentials.",
-            "Treat tool schema quality with the same discipline as API design quality.",
-        ],
-        fill=WHITE,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Multi-Tenant and Security Model", "A customer-ready server must isolate credentials, identity, and execution context", section="Architecture")
-    add_code_card(
-        slide,
-        0.9,
-        2.25,
-        5.55,
-        3.95,
-        "Credential scoping pattern",
-        "CATALYSTCENTER_HOST=catc1.example.com\nCATALYSTCENTER_USERNAME=admin\nCATALYSTCENTER_PASSWORD=secret\n\nCATALYSTCENTER_ACME_HOST=acme-catc.example.com\nCATALYSTCENTER_ACME_USERNAME=svc-acme\nCATALYSTCENTER_ACME_PASSWORD=acme-secret\n\nawait call_tool(\"provision_site\", {\"tenant_id\": \"acme\", ...})",
-        fill=WHITE,
-    )
-    add_bullet_box(
-        slide,
-        6.8,
-        2.25,
-        5.55,
-        3.95,
-        "Production controls",
-        [
-            "Optional OAuth and JWT validation with JWKS-based trust",
-            "Tenant isolation through per-tenant credential scoping",
-            "External secret-management friendly: vault or cloud secret stores",
-            "TLS termination at the reverse proxy with proxy buffering disabled for SSE",
-            "Configurable SSL verification per tenant and auditable artifacts per task",
-        ],
-        fill=CARD,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "What We Proved in the Lab", "Concrete evidence makes the story more credible with customers", section="Architecture")
-    add_metric_card(slide, 0.9, 2.35, 2.6, 1.7, "45", "MCP tools exposed", "Specialized tools plus generic workflow_manager wrappers")
-    add_metric_card(slide, 3.8, 2.35, 2.6, 1.7, "8/8", "Tests passing", "Server, transformers, and task contract validation")
-    add_metric_card(slide, 6.7, 2.35, 2.6, 1.7, "Live", "Controller validation", "Export, reapply, create, and task log inspection executed")
-    add_metric_card(slide, 9.6, 2.35, 2.75, 1.7, "Idempotent", "site_workflow_manager", "Reapplying existing SAN JOSE state produced no changes")
-    add_bullet_box(
-        slide,
-        0.9,
-        4.45,
-        11.45,
-        1.95,
-        "Real examples already exercised",
-        [
-            "Pulled the Global/USA/SAN JOSE hierarchy into YAML using a config generator flow.",
-            "Reapplied the generated site hierarchy and received changed=false on the live controller.",
-            "Created a SAMPLE area with one building and two floors, then inspected the ansible-runner logs and result artifacts.",
-        ],
-        fill=WHITE,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    add_section_divider(
-        slide,
-        "Demo and Customer Conversation",
-        "Use the live workflow to connect the architecture story to something the customer can repeat.",
-        "Part 3",
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Training Use Case: Campus Build-Out", "A realistic workflow that shows where MCP helps and where Ansible still does the work", section="Demo")
-    add_process_row(
-        slide,
-        2.45,
-        [
-            ("Sites", "Create the hierarchy for area, building, and floor objects."),
-            ("Settings", "Apply DNS, NTP, DHCP, SNMP, or syslog through network settings workflows."),
-            ("Discover", "Run discovery and inventory onboarding before intent provisioning."),
-            ("Fabric", "Onboard border, edge, and control-plane roles into SD-Access."),
-        ],
-    )
-    add_bullet_box(
-        slide,
-        0.9,
-        5.0,
-        11.45,
-        1.45,
-        "Why it lands well with customers",
-        [
-            "It starts from familiar day-0 and day-1 activities, then shows how MCP lets AI orchestrate those steps without replacing the underlying playbooks.",
-        ],
-        fill=WHITE,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Training Use Case: Day-2 Operations", "Use the same MCP pattern for compliance, remediation, and assurance-driven operations", section="Demo")
-    add_process_row(
-        slide,
-        2.45,
-        [
-            ("Check", "Run network compliance or backup workflows asynchronously."),
-            ("Assess", "Poll task results and identify non-compliant devices or failed intents."),
-            ("Remediate", "Deploy a remediation template or re-run a bounded provisioning step."),
-            ("Resolve", "Update assurance issues and revalidate the final state."),
-        ],
-    )
-    add_bullet_box(
-        slide,
-        0.9,
-        5.0,
-        11.45,
-        1.45,
-        "Key message",
-        [
-            "MCP is not just for greenfield provisioning. It is a practical wrapper for day-2 network operations where evidence, polling, and repeatability matter even more.",
-        ],
-        fill=WHITE,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Recommended Demo Storyboard", "A four-step sequence that shows planning, provisioning, and validation without unnecessary risk", section="Demo")
-    add_process_row(
-        slide,
-        2.45,
-        [
-            ("Generate", "Export the SAN JOSE site hierarchy as reusable YAML."),
-            ("Reapply", "Submit the same config through site_workflow_manager and prove idempotency."),
-            ("Create", "Ask for a new SAMPLE hierarchy from natural language intent."),
-            ("Inspect", "Show taskId polling, logs, and the final module result."),
-        ],
-    )
-    add_card(
-        slide,
-        0.9,
-        5.05,
-        11.45,
-        1.15,
-        "What the audience should notice",
-        "The AI is not free-styling controller payloads. It is selecting explicit tools, using typed inputs, and presenting stateful operational evidence.",
-        fill=RGBColor(231, 247, 248),
-        title_color=TEAL,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Prompt-to-Tool Behavior", "Show customers how natural language maps to safe execution", section="Demo")
-    add_prompt_examples(slide)
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "AI Usage Pattern to Recommend", "Keep the agent inside a bounded loop", section="Demo")
-    add_process_row(
-        slide,
-        2.45,
-        [
-            ("Plan", "Use read-only generators and inventory pulls to collect current state."),
-            ("Normalize", "Convert intent into flat tool inputs and validated schemas."),
-            ("Apply", "Run workflow_manager tools through ansible-runner with task tracking."),
-            ("Validate", "Re-pull state or run checks before declaring success."),
-        ],
-    )
-    add_bullet_box(
-        slide,
-        0.9,
-        5.0,
-        11.45,
-        1.45,
-        "Operating rule",
-        [
-            "For pull operations or reusable data-file generation, prefer config generator tools. For desired-state change, prefer workflow_manager tools. For destructive operations, require explicit human approval.",
-        ],
-        fill=WHITE,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Customer Adoption Path", "A practical rollout plan instead of a large transformation program", section="Close")
-    add_metric_card(slide, 0.9, 2.45, 3.6, 1.85, "30 days", "Start small", "Expose one generator/export tool and one idempotent apply tool")
-    add_metric_card(slide, 4.85, 2.45, 3.6, 1.85, "60 days", "Close the loop", "Add validation, task polling, and artifact inspection for each flow")
-    add_metric_card(slide, 8.8, 2.45, 3.55, 1.85, "90 days", "Scale deliberately", "Expand coverage by domain and keep approvals around destructive boundaries")
-    add_card(
-        slide,
-        0.9,
-        4.85,
-        11.45,
+        8.95,
         1.25,
-        "Best first use case",
-        "Pick a brownfield workflow where customers already distrust manual handoffs: export current state, reapply to prove idempotency, then introduce one small controlled change.",
-        fill=WHITE,
-    )
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "Deployment and AI Integration", "Give customers a credible path from lab demo to production consumption", section="Close")
-    add_bullet_box(
-        slide,
-        0.9,
-        2.25,
-        5.55,
-        4.0,
-        "Deployment options",
+        "Why this matters for Catalyst Center",
         [
-            "Local development with uvicorn server:app --reload",
-            "Production behind a reverse proxy with multiple workers and Redis",
-            "Containerized deployment with the hardened Dockerfile in this repo",
-            "Kubernetes-ready pattern with stateless replicas and externalized secrets",
+            "Your approved automation stays in control. MCP adds a natural-language entry point, schema discipline, task tracking, and client interoperability."
         ],
-        fill=WHITE,
-    )
-    add_code_card(
-        slide,
-        6.8,
-        2.25,
-        5.55,
-        4.0,
-        "AI client integration pattern",
-        "\"mcpServers\": {\n  \"catalyst-center\": {\n    \"url\": \"http://localhost:8000/mcp\",\n    \"transport\": \"http\"\n  }\n}\n\nGET /healthz\nGET /tasks/get/{task_id}",
-        fill=CARD,
+        fill_color=SKY,
+        line_color=SKY,
     )
 
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, PAPER)
-    add_content_frame(slide, "What Customers Leave With", "Concrete assets they can reuse immediately", section="Close")
-    add_bullet_box(
+
+def add_architecture_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title Only 1"))
+    set_title(slide, "Catalyst Center MCP Server Architecture")
+    add_textbox(
         slide,
-        0.9,
-        2.3,
-        5.7,
-        3.9,
-        "Reusable technical assets",
+        0.35,
+        1.0,
+        12.0,
+        0.55,
+        ["The AI does not talk directly to Catalyst Center APIs or credentials. The MCP server is the control point."],
+        font_size=18,
+    )
+    add_card(slide, 0.45, 2.0, 2.05, 1.25, "Operator", ["Asks for an outcome in plain language"], fill_color=LIGHT)
+    add_card(slide, 2.75, 2.0, 2.05, 1.25, "AI client", ["Chooses from advertised MCP tools"], fill_color=LIGHT)
+    add_card(slide, 5.05, 1.75, 2.35, 1.75, "Catalyst Center MCP server", ["Flat tool schemas", "Translation layer", "Task primitives"], fill_color=SKY, line_color=SKY)
+    add_card(slide, 7.7, 2.0, 2.15, 1.25, "ansible-runner", ["Runs workflow_manager and config_generator modules"], fill_color=LIGHT)
+    add_card(slide, 10.1, 2.0, 2.35, 1.25, "Catalyst Center", ["Authoritative source of network intent and state"], fill_color=LIGHT)
+    add_arrow(slide, 2.35, 2.62, 2.7, 2.62)
+    add_arrow(slide, 4.65, 2.62, 5.0, 2.62)
+    add_arrow(slide, 7.3, 2.62, 7.65, 2.62)
+    add_arrow(slide, 9.75, 2.62, 10.05, 2.62)
+
+    add_card(slide, 4.2, 4.3, 2.0, 1.15, "OAuth / SSO", ["Maps user identity to a tenant or policy boundary"], fill_color=LIGHT)
+    add_card(slide, 6.45, 4.3, 2.0, 1.15, "Secrets", ["Catalyst Center credentials stay on the server side"], fill_color=LIGHT)
+    add_card(slide, 8.7, 4.3, 2.1, 1.15, "Redis", ["Stores task state, progress, and artifacts index"], fill_color=LIGHT)
+
+    add_arrow(slide, 6.2, 3.5, 5.9, 4.25, color=TEAL)
+    add_arrow(slide, 6.35, 3.5, 7.05, 4.25, color=TEAL)
+    add_arrow(slide, 6.55, 3.5, 9.0, 4.25, color=TEAL)
+
+
+def add_plan_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title Only 1"))
+    set_title(slide, "Plan Starts with Brownfield Export")
+    add_textbox(
+        slide,
+        0.35,
+        1.0,
+        12.0,
+        0.5,
+        ["For Catalyst Center teams, the safest first AI use case is read-only export: pull current intent, review it, then decide what to change."],
+        font_size=18,
+    )
+    add_step_card(slide, 0.45, 2.0, "1", "Generate", "Use playbook_config_generator modules to export current state into YAML.", fill_color=LIGHT)
+    add_step_card(slide, 2.95, 2.0, "2", "Review", "Inspect the generated file as a normal Catalyst Center design artifact.", fill_color=LIGHT)
+    add_step_card(slide, 5.45, 2.0, "3", "Edit", "Adjust the YAML only where a human has approved the intended change.", fill_color=LIGHT)
+    add_step_card(slide, 7.95, 2.0, "4", "Apply", "Reapply through workflow_manager modules in merged mode.", fill_color=SKY)
+
+    add_card(
+        slide,
+        0.65,
+        4.2,
+        4.8,
+        1.45,
+        "Useful starting generators",
         [
-            "server.py for the FastMCP and FastAPI entry point",
-            "runner_engine.py for ansible-runner execution and Redis-backed task state",
-            "transformers.py for flat-to-nested schema translation",
-            "Dockerfile for a hardened non-root deployment image",
+            "Site hierarchy",
+            "Inventory",
+            "Network settings",
+            "Wireless design where the cluster exposes the APIs",
         ],
-        fill=WHITE,
+        fill_color=WHITE,
     )
-    add_bullet_box(
-        slide,
-        6.9,
-        2.3,
-        5.45,
-        3.9,
-        "Reusable operating patterns",
+
+    code_box = slide.shapes.add_shape(
+        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+        Inches(6.0),
+        Inches(4.0),
+        Inches(6.2),
+        Inches(1.9),
+    )
+    code_box.fill.solid()
+    code_box.fill.fore_color.rgb = DARK
+    code_box.line.color.rgb = DARK
+    code_lines = [
+        "config:",
+        "- network_management_details:",
+        "  - site_name: Global/USA/SAN JOSE",
+        "    settings:",
+        "      timezone: GMT",
+        "      syslog_server:",
+        "        configure_dnac_ip: true",
+    ]
+    code_text = slide.shapes.add_textbox(Inches(6.18), Inches(4.18), Inches(5.85), Inches(1.55))
+    tf = code_text.text_frame
+    tf.word_wrap = False
+    for index, line in enumerate(code_lines):
+        paragraph = tf.paragraphs[0] if index == 0 else tf.add_paragraph()
+        set_paragraph_runs(paragraph, line, font_size=13, color=WHITE)
+        paragraph.font.name = "Menlo"
+
+
+def add_prompt_patterns_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title, 2 Columns with Bullets"))
+    set_title(slide, "What Good AI Requests Look Like")
+    placeholders = content_placeholders(slide)
+    fill_placeholder_lines(
+        placeholders[0],
         [
-            "How to separate generator/export tools from apply tools",
-            "How to model long-running tasks and polling cleanly",
-            "How to add destructive confirmation boundaries",
-            "How to keep AI orchestration predictable without rewriting automation",
+            "Prompt patterns that work well",
+            "Generate the site config for Global/USA/SAN JOSE as YAML",
+            "Reapply the exported network settings in merged mode",
+            "Create a sample building with two floors under SAN JOSE",
+            "Show task progress and final result for the change",
         ],
-        fill=CARD,
+        font_size=15,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[1],
+        [
+            "Why these prompts work",
+            "They describe outcomes, not raw API calls",
+            "They rely on typed tool schemas instead of nested module dictionaries",
+            "They create a clean handoff to task IDs, artifacts, and approvals",
+            "They keep Catalyst Center operators in the decision loop",
+        ],
+        font_size=15,
+        first_line_bold=True,
     )
 
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_background(slide, NAVY)
-    add_background_accents(slide, dark=True)
-    title = slide.shapes.add_textbox(Inches(0.9), Inches(1.5), Inches(10.0), Inches(1.0))
-    p = title.text_frame.paragraphs[0]
-    run = p.add_run()
-    run.text = "Q&A"
-    run.font.name = "Aptos Display"
-    run.font.size = Pt(32)
-    run.font.bold = True
-    run.font.color.rgb = WHITE
 
-    quote = slide.shapes.add_shape(
-        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(0.9), Inches(2.7), Inches(11.5), Inches(2.0)
+def add_tool_model_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title, Subtitle, 4 Columns"))
+    set_title(slide, "Tool Model for a Catalyst Center Audience")
+    placeholders = content_placeholders(slide)
+    fill_placeholder_lines(
+        placeholders[0],
+        ["The server can expose dozens of modules, but operators should learn three patterns first."],
+        font_size=16,
     )
-    quote.fill.solid()
-    quote.fill.fore_color.rgb = RGBColor(18, 53, 93)
-    quote.line.color.rgb = CYAN
-    tf = quote.text_frame
-    tf.word_wrap = True
-    p = tf.paragraphs[0]
-    p.alignment = PP_ALIGN.CENTER
-    run = p.add_run()
-    run.text = (
-        "You do not need to rewrite your automation to make it AI-usable.\n"
-        "You need a reliable tool contract, a safe runtime, and a validation loop."
+    fill_placeholder_lines(
+        placeholders[1],
+        ["Specialized tools", "Best for common tasks such as site provisioning, template deploy, inventory, and assurance."],
+        font_size=14,
+        first_line_bold=True,
     )
-    run.font.name = "Aptos Display"
-    run.font.size = Pt(24)
-    run.font.bold = True
-    run.font.color.rgb = WHITE
+    fill_placeholder_lines(
+        placeholders[2],
+        ["Generic workflow tools", "run_*_workflow_manager wrappers cover the breadth of the Ansible collection when needed."],
+        font_size=14,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[3],
+        ["Config generators", "generate_*_config wrappers are the safest starting point for brownfield discovery and export."],
+        font_size=14,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[4],
+        ["Task primitives", "Every operation returns a taskId immediately so long-running changes are observable and pollable."],
+        font_size=14,
+        first_line_bold=True,
+    )
 
-    close = slide.shapes.add_textbox(Inches(0.9), Inches(5.35), Inches(11.0), Inches(0.7))
-    p = close.text_frame.paragraphs[0]
-    p.alignment = PP_ALIGN.CENTER
-    run = p.add_run()
-    run.text = "Plan, Provision, Validate with MCP-enabled automation"
-    run.font.name = "Aptos"
-    run.font.size = Pt(18)
-    run.font.color.rgb = RGBColor(226, 235, 242)
 
-    total = len(prs.slides)
-    for index, built_slide in enumerate(prs.slides, start=1):
-        add_footer(built_slide, index, total)
+def add_ppv_flow_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title Only 1"))
+    set_title(slide, "Plan, Provision, Validate as One Operating Flow")
+    add_textbox(
+        slide,
+        0.35,
+        1.0,
+        12.2,
+        0.5,
+        ["The power of MCP is not one tool. It is how an AI client chains trusted tools without losing control or auditability."],
+        font_size=18,
+    )
+    steps = [
+        ("Plan", "Pull current intent and generate reapply-safe YAML"),
+        ("Approve", "Human review decides what is allowed to change"),
+        ("Provision", "Run workflow_manager modules through ansible-runner"),
+        ("Validate", "Use assurance, exports, and post-checks to confirm outcome"),
+        ("Record", "Store tasks, artifacts, and change evidence"),
+    ]
+    left = 0.45
+    for idx, (title, body) in enumerate(steps):
+        fill = LIGHT if idx != 2 else SKY
+        add_card(slide, left, 2.2, 2.35, 1.55, title, [body], fill_color=fill, line_color=fill)
+        if idx < len(steps) - 1:
+            add_arrow(slide, left + 2.35, 2.98, left + 2.55, 2.98)
+        left += 2.55
 
-    prs.save(OUTPUT)
+    add_card(
+        slide,
+        2.1,
+        4.55,
+        9.1,
+        1.2,
+        "Important principle",
+        ["The AI should orchestrate approved building blocks. It should not invent state models or bypass Catalyst Center governance."],
+        fill_color=WHITE,
+    )
+
+
+def add_task_lifecycle_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title Only 1"))
+    set_title(slide, "Long-Running Task Lifecycle")
+    add_textbox(
+        slide,
+        0.35,
+        1.0,
+        12.2,
+        0.5,
+        ["Network changes take time. The MCP task model keeps the client responsive while ansible-runner does the work."],
+        font_size=18,
+    )
+    add_step_card(slide, 0.45, 2.0, "1", "Submit", "Client calls a tool and gets taskId + submitted status immediately.", fill_color=LIGHT)
+    add_step_card(slide, 2.95, 2.0, "2", "Execute", "ansible-runner starts the selected workflow_manager or config generator.", fill_color=LIGHT)
+    add_step_card(slide, 5.45, 2.0, "3", "Track", "Runner events update progress, status messages, and artifact references.", fill_color=SKY)
+    add_step_card(slide, 7.95, 2.0, "4", "Poll", "Client checks /tasks/get/{taskId} or receives progress notifications.", fill_color=LIGHT)
+    add_step_card(slide, 10.45, 2.0, "5", "Complete", "Final result, generated files, or failure details are returned predictably.", fill_color=LIGHT)
+    for start in [2.65, 5.15, 7.65, 10.15]:
+        add_arrow(slide, start, 2.72, start + 0.2, 2.72)
+
+    add_card(
+        slide,
+        1.1,
+        4.35,
+        11.1,
+        1.25,
+        "Why operators care",
+        ["This is the difference between a chat demo and a production tool. You can see status, preserve evidence, and recover cleanly from failure."],
+        fill_color=WHITE,
+    )
+
+
+def add_security_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title, Subtitle, 3 Columns"))
+    set_title(slide, "Security and Governance Model")
+    placeholders = content_placeholders(slide)
+    fill_placeholder_lines(
+        placeholders[0],
+        ["The recommended pattern is server-side secrets, tenant-aware access, and explicit approvals for risky operations."],
+        font_size=16,
+    )
+    fill_placeholder_lines(
+        placeholders[1],
+        [
+            "Identity and access",
+            "Use enterprise SSO and OAuth to map each user to a tenant or policy boundary",
+            "Authorize task reads so one tenant cannot inspect another tenant's changes",
+        ],
+        font_size=14,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[2],
+        [
+            "Secrets and approvals",
+            "Keep Catalyst Center credentials on the MCP server, not in prompts",
+            "Require confirmation metadata for destructive tools such as delete or reprovision actions",
+        ],
+        font_size=14,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[3],
+        [
+            "Operational controls",
+            "Run over HTTPS with reverse proxy support, Redis-backed task state, and artifact retention rules",
+            "Audit task inputs, progress events, and final outcomes for change records",
+        ],
+        font_size=14,
+        first_line_bold=True,
+    )
+
+
+def add_deployment_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title, Subtitle, 2 Columns"))
+    set_title(slide, "Production Deployment Pattern")
+    placeholders = content_placeholders(slide)
+    fill_placeholder_lines(
+        placeholders[0],
+        ["A Linux deployment behind HTTPS gives customers a clean way to operate the server at scale."],
+        font_size=16,
+    )
+    fill_placeholder_lines(
+        placeholders[1],
+        [
+            "Core stack",
+            "FastMCP + FastAPI for the tool endpoint",
+            "ansible-runner as the only execution path",
+            "Redis for task state and artifact indexing",
+            "NGINX or a cloud load balancer for HTTPS and proxy buffering control",
+        ],
+        font_size=15,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[2],
+        [
+            "What this enables",
+            "Stateless horizontal scale for the API tier",
+            "MCP clients over HTTP/SSE",
+            "Tenant-scoped credential routing",
+            "Systemd or container-based deployment options",
+        ],
+        font_size=15,
+        first_line_bold=True,
+    )
+
+
+def add_demo_storyboard_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title, Subtitle, Table 1"))
+    set_title(slide, "Suggested Demo Storyboard")
+    fill_placeholder_lines(content_placeholders(slide)[0], ["Show one read-only export, one approved change, and one validation check."], font_size=17)
+    rows = [
+        ["Demo step", "Tool pattern", "What the audience should notice"],
+        ["Export site or network settings", "generate_*_config", "Brownfield intent becomes structured YAML with no rewrite"],
+        ["Provision an approved change", "specialized or run_*_workflow_manager tool", "The AI uses a flat contract, not raw nested Ansible data"],
+        ["Watch the job run", "taskId + progress + /tasks/get", "Long-running changes stay observable and auditable"],
+        ["Validate outcome", "assurance or export tool", "The same platform is used to confirm actual state"],
+    ]
+    add_table_slide(slide, len(rows), 3, rows, [2.8, 3.1, 6.4])
+
+
+def add_use_cases_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title, Subtitle, 4 Columns"))
+    set_title(slide, "High-Value Customer Use Cases")
+    placeholders = content_placeholders(slide)
+    fill_placeholder_lines(
+        placeholders[0],
+        ["Start where Catalyst Center already owns the truth and the Ansible collection already exposes the workflow."],
+        font_size=16,
+    )
+    fill_placeholder_lines(
+        placeholders[1],
+        ["Brownfield export", "Pull site, inventory, network settings, or wireless design into reusable data files."],
+        font_size=14,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[2],
+        ["Campus rollout", "Provision buildings, floors, fabric devices, templates, and baseline settings in a controlled path."],
+        font_size=14,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[3],
+        ["Day-2 changes", "Apply approved updates through typed tools instead of ad hoc API calls or one-off scripts."],
+        font_size=14,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[4],
+        ["Validation", "Use assurance-driven operations and exports to verify that the network matches intent after change."],
+        font_size=14,
+        first_line_bold=True,
+    )
+
+
+def add_adoption_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title, Subtitle, 3 Columns"))
+    set_title(slide, "A Realistic 30 / 60 / 90 Day Adoption Path")
+    placeholders = content_placeholders(slide)
+    fill_placeholder_lines(
+        placeholders[0],
+        ["Adoption works best when the first win is read-only, the second win is controlled provisioning, and the third win adds validation."],
+        font_size=16,
+    )
+    fill_placeholder_lines(
+        placeholders[1],
+        [
+            "First 30 days",
+            "Deploy the server behind HTTPS",
+            "Enable tenant-scoped credentials",
+            "Start with config generators and task polling",
+        ],
+        font_size=14,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[2],
+        [
+            "Day 31 to 60",
+            "Add one or two approved write paths",
+            "Train operators on prompt patterns and approval workflow",
+            "Capture artifacts and change evidence",
+        ],
+        font_size=14,
+        first_line_bold=True,
+    )
+    fill_placeholder_lines(
+        placeholders[3],
+        [
+            "Day 61 to 90",
+            "Expand to validation and closed-loop use cases",
+            "Add more workflow_manager coverage",
+            "Measure adoption by task success and time saved",
+        ],
+        font_size=14,
+        first_line_bold=True,
+    )
+
+
+def add_takeaways_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Title, 1 Column with Bullets"))
+    set_title(slide, "Key Takeaways")
+    fill_placeholder_lines(
+        content_placeholders(slide)[0],
+        [
+            "MCP does not replace Catalyst Center automation. It gives your existing automation a safe, typed, AI-consumable front door.",
+            "For Catalyst Center teams, the cleanest starting point is read-only export with playbook_config_generator modules.",
+            "The same Ansible collection can then be used to provision approved changes through workflow_manager modules.",
+            "Task IDs, progress events, HTTPS, Redis state, and tenant-aware access are what make the model production-worthy.",
+            "Start small, prove one planning flow and one provisioning flow, then expand with validation and governance.",
+        ],
+        font_size=18,
+    )
+    add_card(
+        slide,
+        8.15,
+        4.3,
+        4.3,
+        1.3,
+        "Recommended first workshop",
+        ["Pick one read-only export and one approved provisioning workflow that already exists in your Catalyst Center practice."],
+        fill_color=SKY,
+        line_color=SKY,
+    )
+
+
+def add_thank_you_slide(prs: Presentation):
+    slide = prs.slides.add_slide(get_layout(prs, "Thank you 1"))
+    set_title(slide, "Questions?")
+    add_textbox(
+        slide,
+        0.35,
+        4.25,
+        7.0,
+        0.8,
+        ["Catalyst Center teams do not need to become AI experts first.", "They need one trusted MCP server and one useful workflow to start."],
+        font_size=18,
+        bold_first=True,
+        color=DARK,
+    )
+    add_card(
+        slide,
+        8.15,
+        2.7,
+        4.2,
+        1.5,
+        "Leave-behind value",
+        ["A customer-ready architecture, a working MCP server, and a reproducible PowerPoint deck built on the Cisco template."],
+        fill_color=LIGHT,
+    )
+
+
+def build_presentation(template: Path, output: Path):
+    converted_template, temp_dir = convert_template_path(template)
+    try:
+        prs = Presentation(str(converted_template))
+        remove_all_slides(prs)
+        add_title_slide(prs)
+        add_agenda_slide(prs)
+        add_segue(prs, "Why This Matters")
+        add_existing_assets_slide(prs)
+        add_mcp_plain_english_slide(prs)
+        add_architecture_slide(prs)
+        add_segue(prs, "Plan")
+        add_plan_slide(prs)
+        add_prompt_patterns_slide(prs)
+        add_segue(prs, "Provision")
+        add_tool_model_slide(prs)
+        add_ppv_flow_slide(prs)
+        add_segue(prs, "Validate and Operate")
+        add_task_lifecycle_slide(prs)
+        add_security_slide(prs)
+        add_deployment_slide(prs)
+        add_demo_storyboard_slide(prs)
+        add_use_cases_slide(prs)
+        add_adoption_slide(prs)
+        add_takeaways_slide(prs)
+        add_thank_you_slide(prs)
+        prs.save(str(output))
+    finally:
+        if temp_dir is not None:
+            temp_dir.cleanup()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Build the Catalyst Center MCP customer training deck.")
+    parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE, help="Path to the Cisco PowerPoint template (.potx or .pptx).")
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="Output presentation path.")
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    if not args.template.exists():
+        raise SystemExit(f"Template not found: {args.template}")
+    build_presentation(args.template, args.output)
+    print(f"Wrote {args.output}")
 
 
 if __name__ == "__main__":
-    build()
+    main()
