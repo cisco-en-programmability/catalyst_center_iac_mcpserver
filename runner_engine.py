@@ -62,6 +62,11 @@ class RunnerEngine:
             else self.settings.catalystcenter_verify_ssl
         )
         port = int(port_raw) if port_raw else self.settings.catalystcenter_port
+        
+        # Get version and normalize it to the nearest supported version
+        raw_version = (env.get(self.settings.tenant_env_name(tenant_id, "VERSION")) 
+                      or self.settings.catalystcenter_version)
+        normalized_version = self.settings.normalize_catalystcenter_version(raw_version)
 
         return TenantCredentials(
             host=self._normalize_host(host),
@@ -69,8 +74,7 @@ class RunnerEngine:
             password=password,
             verify_ssl=verify_ssl,
             port=port,
-            version=env.get(self.settings.tenant_env_name(tenant_id, "VERSION"))
-            or self.settings.catalystcenter_version,
+            version=normalized_version,
         )
 
     @staticmethod

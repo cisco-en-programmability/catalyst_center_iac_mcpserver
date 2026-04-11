@@ -97,6 +97,35 @@ Response includes:
 - `statusMessage`: Human-readable status
 - `result`: Final result when completed
 
+### 5. Version Fallback (`version_fallback_example.py`)
+
+**NEW**: Demonstrates automatic version normalization for Catalyst Center compatibility:
+
+The MCP server automatically normalizes Catalyst Center versions to ensure compatibility:
+
+- **2.3.7.10** or **2.3.7** automatically falls back to **2.3.7.9**
+- **3.1.3.1** or **3.1.3.7** automatically falls back to **3.1.3.6**
+- Unsupported versions remain unchanged
+
+This ensures that any version within the same major.minor.patch family works with the nearest supported version.
+
+**Configuration Example:**
+```bash
+# These will all be normalized to 2.3.7.9
+CATALYSTCENTER_VERSION=2.3.7.10
+CATALYSTCENTER_VERSION=2.3.7
+
+# These will all be normalized to 3.1.3.6
+CATALYSTCENTER_VERSION=3.1.3.1
+CATALYSTCENTER_VERSION=3.1.3.7
+CATALYSTCENTER_VERSION=3.1.3
+```
+
+**Run:**
+```bash
+python examples/version_fallback_example.py
+```
+
 ## Multi-Tenant Usage
 
 To target a specific Catalyst Center instance:
