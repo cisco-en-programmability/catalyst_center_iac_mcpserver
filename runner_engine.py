@@ -15,6 +15,7 @@ import orjson
 from models import TaskLifecycleStatus, TaskRecord, TenantCredentials, utc_now
 from redis_store import RedisTaskStore, TaskStore
 from settings import Settings, get_settings
+from cluster_registry import CatalystCenterClusterCatalog, load_cluster_catalog
 
 
 ProgressCallback = Callable[[float, float, str], Awaitable[None]]
@@ -30,6 +31,9 @@ class RunnerEngine:
     def __init__(self, settings: Settings, store: TaskStore | None = None) -> None:
         self.settings = settings
         self.store = store or RedisTaskStore(settings)
+        self.cluster_catalog: CatalystCenterClusterCatalog = load_cluster_catalog(
+            settings.catalyst_center_clusters_file
+        )
         self._loop: asyncio.AbstractEventLoop | None = None
         self._progress_state: dict[str, dict[str, Any]] = {}
         self._progress_lock = Lock()
@@ -42,7 +46,17 @@ class RunnerEngine:
     async def close(self) -> None:
         await self.store.close()
 
-    def resolve_credentials(self, tenant_id: str) -> TenantCredentials:
+    def resolve_credentials(
+        self,
+        tenant_id: str,
+        catalyst_center: str | None = None,
+    ) -> tuple[TenantCredentials, str | None]:
+        cluster = self.cluster_catalog.resolve(catalyst_center)
+        if cluster is not None:
+            return self._resolve_cluster_credentials(cluster), cluster.name
+        return self._resolve_tenant_credentials(tenant_id), None
+
+    def _resolve_tenant_credentials(self, tenant_id: str) -> TenantCredentials:
         tenant_prefix = tenant_id.strip().upper().replace("-", "_")
         env = os.environ
         host = env.get(self.settings.tenant_env_name(tenant_id, "HOST")) or self.settings.catalystcenter_host
@@ -77,6 +91,45 @@ class RunnerEngine:
             version=normalized_version,
         )
 
+    def _resolve_cluster_credentials(self, cluster: Any) -> TenantCredentials:
+        env = os.environ
+        slug = cluster.slug.upper()
+        username = env.get(self.settings.cluster_env_name(slug, "USERNAME")) or env.get(
+            self.settings.legacy_cluster_env_name(slug, "USERNAME")
+        )
+        password = env.get(self.settings.cluster_env_name(slug, "PASSWORD")) or env.get(
+            self.settings.legacy_cluster_env_name(slug, "PASSWORD")
+        )
+        if not username or not password:
+            raise ValueError(
+                f"Missing credentials for Catalyst Center cluster `{cluster.name}`. "
+                f"Set {self.settings.cluster_env_name(slug, 'USERNAME')} and "
+                f"{self.settings.cluster_env_name(slug, 'PASSWORD')}."
+            )
+        verify_ssl_raw = env.get(self.settings.cluster_env_name(slug, "VERIFY_SSL")) or env.get(
+            self.settings.legacy_cluster_env_name(slug, "VERIFY_SSL")
+        )
+        port_raw = env.get(self.settings.cluster_env_name(slug, "PORT")) or env.get(
+            self.settings.legacy_cluster_env_name(slug, "PORT")
+        )
+        version = env.get(self.settings.cluster_env_name(slug, "VERSION")) or env.get(
+            self.settings.legacy_cluster_env_name(slug, "VERSION")
+        ) or cluster.version
+        verify_ssl = (
+            verify_ssl_raw.lower() == "true"
+            if verify_ssl_raw is not None
+            else cluster.verify_ssl
+        )
+        port = int(port_raw) if port_raw else cluster.port
+        return TenantCredentials(
+            host=self._normalize_host(cluster.host),
+            username=username,
+            password=password,
+            verify_ssl=verify_ssl,
+            port=port,
+            version=version,
+        )
+
     @staticmethod
     def _normalize_host(host: str) -> str:
         if "://" not in host:
@@ -90,6 +143,7 @@ class RunnerEngine:
         tool_name: str,
         module_name: str,
         tenant_id: str,
+        catalyst_center: str | None = None,
         state: str,
         config: list[dict[str, Any]],
         progress_callback: ProgressCallback | None = None,
@@ -105,6 +159,7 @@ class RunnerEngine:
             tool_name=tool_name,
             module_name=module_name,
             tenant_id=tenant_id,
+            catalyst_center=catalyst_center,
             module_args=workflow_module_args,
             progress_callback=progress_callback,
             destructive=destructive,
@@ -117,6 +172,7 @@ class RunnerEngine:
         tool_name: str,
         module_name: str,
         tenant_id: str,
+        catalyst_center: str | None = None,
         module_args: dict[str, Any],
         progress_callback: ProgressCallback | None = None,
         destructive: bool = False,
@@ -127,7 +183,7 @@ class RunnerEngine:
         runner_ident = task_id
         artifact_dir = self.settings.runner_artifact_root / task_id
         artifact_dir.mkdir(parents=True, exist_ok=True)
-        credentials = self.resolve_credentials(tenant_id)
+        credentials, resolved_cluster_name = self.resolve_credentials(tenant_id, catalyst_center)
         primary_module_args = {
             **module_args,
             "catalystcenter_host": credentials.host,
@@ -146,6 +202,7 @@ class RunnerEngine:
         record = TaskRecord(
             task_id=task_id,
             tenant_id=tenant_id,
+            catalyst_center=resolved_cluster_name,
             tool_name=tool_name,
             module_name=module_name,
             status=TaskLifecycleStatus.SUBMITTED,

@@ -34,6 +34,8 @@ from models import (
 )
 from runner_engine import RunnerEngine, get_runner_engine
 from settings import Settings, get_settings
+from tool_registry import ResolvedToolDefinition, load_tool_catalog
+from cluster_registry import load_cluster_catalog
 from transformers import (
     build_assurance_issue_workflow_config,
     build_discovery_workflow_config,
@@ -181,13 +183,34 @@ def get_identity_context(
 
 settings = get_settings()
 engine = get_runner_engine()
+TOOL_CATALOG = load_tool_catalog(Path(__file__).with_name("tool_catalog.yaml"))
+CLUSTER_CATALOG = load_cluster_catalog(settings.catalyst_center_clusters_file)
+
+
+def _cluster_summary_text() -> str:
+    enabled_clusters = CLUSTER_CATALOG.enabled_clusters()
+    if not enabled_clusters:
+        return "No enabled Catalyst Center clusters are configured; tools use tenant or default environment credentials."
+    lines = [
+        "Enabled Catalyst Center clusters can be selected with the `catalyst_center` argument."
+    ]
+    for cluster in enabled_clusters:
+        label = f", label={cluster.label}" if cluster.label else ""
+        location = f", location={cluster.location}" if cluster.location else ""
+        lines.append(
+            f"- {cluster.name} (host={cluster.host}, version={cluster.version}{label}{location})"
+        )
+    return " ".join(lines)
+
+
 mcp = FastMCP(
     name=settings.app_name,
     version=settings.app_version,
     instructions=(
         "Cisco Catalyst Center IaC MCP server. Tools expose flat arguments and submit "
         "workflow-manager and playbook-config-generator operations as long-running tasks "
-        "backed by ansible-runner."
+        "backed by ansible-runner. "
+        f"{_cluster_summary_text()}"
     ),
     strict_input_validation=True,
 )
@@ -208,6 +231,7 @@ async def _submit(
     tool_name: str,
     module_name: str,
     tenant_id: str,
+    catalyst_center: str | None,
     state: WorkflowState,
     config: list[dict[str, Any]],
     destructive: bool = False,
@@ -219,6 +243,7 @@ async def _submit(
         tool_name=tool_name,
         module_name=module_name,
         tenant_id=tenant_id,
+        catalyst_center=catalyst_center,
         state=state.value,
         config=config,
         progress_callback=notify,
@@ -238,6 +263,7 @@ async def _submit_module(
     tool_name: str,
     module_name: str,
     tenant_id: str,
+    catalyst_center: str | None,
     module_args: dict[str, Any],
     destructive: bool = False,
 ) -> TaskSubmissionResponse:
@@ -248,6 +274,7 @@ async def _submit_module(
         tool_name=tool_name,
         module_name=module_name,
         tenant_id=tenant_id,
+        catalyst_center=catalyst_center,
         module_args=module_args,
         progress_callback=notify,
         destructive=destructive,
@@ -282,11 +309,6 @@ def _parse_module_args_json(module_args_json: str) -> dict[str, Any]:
     return parsed
 
 
-@mcp.tool(
-    name="provision_site",
-    description="Create or update an area, building, or floor in Catalyst Center using flat site arguments.",
-    annotations=_tool_annotations(),
-)
 async def provision_site(
     site_type: SiteType,
     name: str,
@@ -295,6 +317,7 @@ async def provision_site(
     longitude: float | None = None,
     rf_model: str | None = None,
     tenant_id: str = "default",
+    catalyst_center: str | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     assert ctx is not None
@@ -312,22 +335,18 @@ async def provision_site(
         tool_name="provision_site",
         module_name="site_workflow_manager",
         tenant_id=tenant_id,
+        catalyst_center=catalyst_center,
         state=WorkflowState.MERGED,
         config=build_site_workflow_config(request),
     )).model_dump()
 
 
-@mcp.tool(
-    name="delete_site",
-    description="Delete a site hierarchy object in Catalyst Center. Client confirmation is required.",
-    annotations=_tool_annotations(destructive=True),
-    meta={"humanInTheLoop": {"required": True}},
-)
 async def delete_site(
     site_type: SiteType,
     name: str,
     parent_path: str,
     tenant_id: str = "default",
+    catalyst_center: str | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     assert ctx is not None
@@ -342,17 +361,13 @@ async def delete_site(
         tool_name="delete_site",
         module_name="site_workflow_manager",
         tenant_id=tenant_id,
+        catalyst_center=catalyst_center,
         state=WorkflowState.DELETED,
         config=build_site_workflow_config(request),
         destructive=True,
     )).model_dump()
 
 
-@mcp.tool(
-    name="deploy_template",
-    description="Deploy a Catalyst Center template to one target using a flat key-value template parameter map.",
-    annotations=_tool_annotations(),
-)
 async def deploy_template(
     project_name: str,
     template_name: str,
@@ -361,6 +376,7 @@ async def deploy_template(
     template_params: dict[str, str] | None = None,
     failure_policy: TemplateFailurePolicy = TemplateFailurePolicy.ABORT_TARGET_ON_ERROR,
     tenant_id: str = "default",
+    catalyst_center: str | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     assert ctx is not None
@@ -377,21 +393,18 @@ async def deploy_template(
         tool_name="deploy_template",
         module_name="template_workflow_manager",
         tenant_id=tenant_id,
+        catalyst_center=catalyst_center,
         state=WorkflowState.MERGED,
         config=build_template_workflow_config(request),
     )).model_dump()
 
 
-@mcp.tool(
-    name="onboard_fabric_devices",
-    description="Onboard one fabric device with explicit SD-Access roles.",
-    annotations=_tool_annotations(),
-)
 async def onboard_fabric_devices(
     fabric_name: str,
     device_ip: str,
     device_roles: list[FabricDeviceRole],
     tenant_id: str = "default",
+    catalyst_center: str | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     assert ctx is not None
@@ -406,22 +419,18 @@ async def onboard_fabric_devices(
         tool_name="onboard_fabric_devices",
         module_name="sda_fabric_devices_workflow_manager",
         tenant_id=tenant_id,
+        catalyst_center=catalyst_center,
         state=WorkflowState.MERGED,
         config=build_fabric_devices_workflow_config(request),
     )).model_dump()
 
 
-@mcp.tool(
-    name="reprovision_fabric_device",
-    description="Re-apply provisioning for a fabric device. Client confirmation is required.",
-    annotations=_tool_annotations(destructive=True),
-    meta={"humanInTheLoop": {"required": True}},
-)
 async def reprovision_fabric_device(
     fabric_name: str,
     device_ip: str,
     device_roles: list[FabricDeviceRole],
     tenant_id: str = "default",
+    catalyst_center: str | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     assert ctx is not None
@@ -436,17 +445,13 @@ async def reprovision_fabric_device(
         tool_name="reprovision_fabric_device",
         module_name="sda_fabric_devices_workflow_manager",
         tenant_id=tenant_id,
+        catalyst_center=catalyst_center,
         state=WorkflowState.MERGED,
         config=build_fabric_devices_workflow_config(request),
         destructive=True,
     )).model_dump()
 
 
-@mcp.tool(
-    name="manage_assurance_issues",
-    description="Resolve, ignore, or act on an assurance issue using flat issue filters.",
-    annotations=_tool_annotations(),
-)
 async def manage_assurance_issues(
     issue_name: str,
     issue_process_type: AssuranceIssueProcessType,
@@ -459,6 +464,7 @@ async def manage_assurance_issues(
     end_datetime: str | None = None,
     ignore_duration: str | None = None,
     tenant_id: str = "default",
+    catalyst_center: str | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     assert ctx is not None
@@ -479,16 +485,12 @@ async def manage_assurance_issues(
         tool_name="manage_assurance_issues",
         module_name="assurance_issue_workflow_manager",
         tenant_id=tenant_id,
+        catalyst_center=catalyst_center,
         state=WorkflowState.MERGED,
         config=build_assurance_issue_workflow_config(request),
     )).model_dump()
 
 
-@mcp.tool(
-    name="discover_devices",
-    description="Initiate network device discovery using IP addresses, ranges, or CDP/LLDP.",
-    annotations=_tool_annotations(),
-)
 async def discover_devices(
     discovery_name: str,
     discovery_type: DiscoveryType,
@@ -500,6 +502,7 @@ async def discover_devices(
     global_credential_id_list: list[str] | None = None,
     preferred_mgmt_ip_method: str | None = None,
     tenant_id: str = "default",
+    catalyst_center: str | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     assert ctx is not None
@@ -519,16 +522,12 @@ async def discover_devices(
         tool_name="discover_devices",
         module_name="discovery_workflow_manager",
         tenant_id=tenant_id,
+        catalyst_center=catalyst_center,
         state=WorkflowState.MERGED,
         config=build_discovery_workflow_config(request),
     )).model_dump()
 
 
-@mcp.tool(
-    name="manage_inventory",
-    description="Manage device inventory - update management IPs, assign to sites, or export device lists.",
-    annotations=_tool_annotations(),
-)
 async def manage_inventory(
     device_ips: list[str] | None = None,
     device_uuids: list[str] | None = None,
@@ -538,6 +537,7 @@ async def manage_inventory(
     update_mgmt_ip: bool = False,
     export_device_list: bool = False,
     tenant_id: str = "default",
+    catalyst_center: str | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     assert ctx is not None
@@ -555,16 +555,12 @@ async def manage_inventory(
         tool_name="manage_inventory",
         module_name="inventory_workflow_manager",
         tenant_id=tenant_id,
+        catalyst_center=catalyst_center,
         state=WorkflowState.MERGED,
         config=build_inventory_workflow_config(request),
     )).model_dump()
 
 
-@mcp.tool(
-    name="configure_network_settings",
-    description="Configure network settings for a site including DHCP, DNS, NTP, SNMP, and Syslog servers.",
-    annotations=_tool_annotations(),
-)
 async def configure_network_settings(
     site_name: str,
     dhcp_servers: list[str] | None = None,
@@ -577,6 +573,7 @@ async def configure_network_settings(
     snmp_servers: list[str] | None = None,
     syslog_servers: list[str] | None = None,
     tenant_id: str = "default",
+    catalyst_center: str | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     assert ctx is not None
@@ -597,17 +594,194 @@ async def configure_network_settings(
         tool_name="configure_network_settings",
         module_name="network_settings_workflow_manager",
         tenant_id=tenant_id,
+        catalyst_center=catalyst_center,
         state=WorkflowState.MERGED,
         config=build_network_settings_workflow_config(request),
     )).model_dump()
 
 
-def _register_generic_workflow_tools() -> None:
-    destructive_module_hints = {"backup_and_restore_workflow_manager", "rma_workflow_manager"}
+@mcp.tool(
+    name="list_catalyst_centers",
+    description="List enabled Catalyst Center clusters defined in catalyst_center_clusters.yaml.",
+    annotations=_tool_annotations(read_only=True),
+)
+async def list_catalyst_centers() -> dict[str, Any]:
+    return {
+        "catalystCenters": [
+            {
+                "name": cluster.name,
+                "label": cluster.label,
+                "host": cluster.host,
+                "version": cluster.version,
+                "location": cluster.location,
+                "enabled": cluster.enabled,
+                "credentialEnvPrefix": settings.cluster_env_name(cluster.slug, ""),
+            }
+            for cluster in CLUSTER_CATALOG.catalyst_centers
+        ]
+    }
 
-    for module_name in GENERIC_WORKFLOW_MODULES:
-        tool_name = f"run_{module_name}"
-        destructive = module_name in destructive_module_hints
+
+DIRECT_TOOL_HANDLERS: dict[str, Any] = {
+    "provision_site": provision_site,
+    "delete_site": delete_site,
+    "deploy_template": deploy_template,
+    "onboard_fabric_devices": onboard_fabric_devices,
+    "reprovision_fabric_device": reprovision_fabric_device,
+    "manage_assurance_issues": manage_assurance_issues,
+    "discover_devices": discover_devices,
+    "manage_inventory": manage_inventory,
+    "configure_network_settings": configure_network_settings,
+}
+
+DIRECT_TOOL_DEFINITIONS: tuple[ResolvedToolDefinition, ...] = (
+    ResolvedToolDefinition(
+        top_category="direct_tools",
+        workflow_category=None,
+        subcategory="site_management",
+        tool_name="provision_site",
+        module_name="site_workflow_manager",
+        description="Create or update an area, building, or floor in Catalyst Center using flat site arguments.",
+        destructive=False,
+        read_only=False,
+        handler_name="provision_site",
+    ),
+    ResolvedToolDefinition(
+        top_category="direct_tools",
+        workflow_category=None,
+        subcategory="site_management",
+        tool_name="delete_site",
+        module_name="site_workflow_manager",
+        description="Delete a site hierarchy object in Catalyst Center. Client confirmation is required.",
+        destructive=True,
+        read_only=False,
+        handler_name="delete_site",
+    ),
+    ResolvedToolDefinition(
+        top_category="direct_tools",
+        workflow_category=None,
+        subcategory="site_management",
+        tool_name="configure_network_settings",
+        module_name="network_settings_workflow_manager",
+        description="Configure network settings for a site including DHCP, DNS, NTP, SNMP, and Syslog servers.",
+        destructive=False,
+        read_only=False,
+        handler_name="configure_network_settings",
+    ),
+    ResolvedToolDefinition(
+        top_category="direct_tools",
+        workflow_category=None,
+        subcategory="cli_templates",
+        tool_name="deploy_template",
+        module_name="template_workflow_manager",
+        description="Deploy a Catalyst Center template to one target using a flat key-value template parameter map.",
+        destructive=False,
+        read_only=False,
+        handler_name="deploy_template",
+    ),
+    ResolvedToolDefinition(
+        top_category="direct_tools",
+        workflow_category=None,
+        subcategory="discovery",
+        tool_name="discover_devices",
+        module_name="discovery_workflow_manager",
+        description="Initiate network device discovery using IP addresses, ranges, or CDP/LLDP.",
+        destructive=False,
+        read_only=False,
+        handler_name="discover_devices",
+    ),
+    ResolvedToolDefinition(
+        top_category="direct_tools",
+        workflow_category=None,
+        subcategory="inventory",
+        tool_name="manage_inventory",
+        module_name="inventory_workflow_manager",
+        description="Manage device inventory - update management IPs, assign to sites, or export device lists.",
+        destructive=False,
+        read_only=False,
+        handler_name="manage_inventory",
+    ),
+    ResolvedToolDefinition(
+        top_category="direct_tools",
+        workflow_category=None,
+        subcategory="sd_access_fabric",
+        tool_name="onboard_fabric_devices",
+        module_name="sda_fabric_devices_workflow_manager",
+        description="Onboard one fabric device with explicit SD-Access roles.",
+        destructive=False,
+        read_only=False,
+        handler_name="onboard_fabric_devices",
+    ),
+    ResolvedToolDefinition(
+        top_category="direct_tools",
+        workflow_category=None,
+        subcategory="sd_access_fabric",
+        tool_name="reprovision_fabric_device",
+        module_name="sda_fabric_devices_workflow_manager",
+        description="Re-apply provisioning for a fabric device. Client confirmation is required.",
+        destructive=True,
+        read_only=False,
+        handler_name="reprovision_fabric_device",
+    ),
+    ResolvedToolDefinition(
+        top_category="direct_tools",
+        workflow_category=None,
+        subcategory="assurance",
+        tool_name="manage_assurance_issues",
+        module_name="assurance_issue_workflow_manager",
+        description="Resolve, ignore, or act on an assurance issue using flat issue filters.",
+        destructive=False,
+        read_only=False,
+        handler_name="manage_assurance_issues",
+    ),
+)
+
+
+def _catalog_meta(definition: ResolvedToolDefinition) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "catalog": {
+            "topCategory": definition.top_category,
+            "subcategory": definition.subcategory,
+        }
+    }
+    if definition.workflow_category is not None:
+        meta["catalog"]["workflowCategory"] = definition.workflow_category
+    if definition.destructive:
+        meta["humanInTheLoop"] = {"required": True}
+    return meta
+
+
+def _register_direct_tools() -> None:
+    available_workflow_modules = set(GENERIC_WORKFLOW_MODULES)
+    for definition in DIRECT_TOOL_DEFINITIONS:
+        if definition.module_name not in available_workflow_modules:
+            raise RuntimeError(
+                f"Direct tool `{definition.tool_name}` references unknown module "
+                f"`{definition.module_name}` in tool_catalog.yaml"
+            )
+        handler = DIRECT_TOOL_HANDLERS.get(definition.handler_name or "")
+        if handler is None:
+            raise RuntimeError(
+                f"Direct tool `{definition.tool_name}` references unknown handler "
+                f"`{definition.handler_name}` in tool_catalog.yaml"
+            )
+        mcp.tool(
+            handler,
+            name=definition.tool_name,
+            description=definition.description,
+            annotations=_tool_annotations(destructive=definition.destructive),
+            meta=_catalog_meta(definition),
+        )
+
+
+def _register_generic_workflow_tools() -> None:
+    available_workflow_modules = set(GENERIC_WORKFLOW_MODULES)
+    for definition in TOOL_CATALOG.iter_workflow_tools("configuration_creation"):
+        if definition.module_name not in available_workflow_modules:
+            raise RuntimeError(
+                f"Workflow tool `{definition.tool_name}` references unknown module "
+                f"`{definition.module_name}` in tool_catalog.yaml"
+            )
 
         def _make_generic_tool(
             module_name: str,
@@ -618,6 +792,7 @@ def _register_generic_workflow_tools() -> None:
                 config_json: str,
                 state: WorkflowState = WorkflowState.MERGED,
                 tenant_id: str = "default",
+                catalyst_center: str | None = None,
                 ctx: Context | None = None,
             ) -> dict[str, Any]:
                 assert ctx is not None
@@ -628,6 +803,7 @@ def _register_generic_workflow_tools() -> None:
                         tool_name=tool_name,
                         module_name=module_name,
                         tenant_id=tenant_id,
+                        catalyst_center=catalyst_center,
                         state=state,
                         config=config,
                         destructive=destructive,
@@ -636,30 +812,31 @@ def _register_generic_workflow_tools() -> None:
 
             return _generic_tool
 
-        generic_tool = _make_generic_tool(module_name, tool_name, destructive)
-
-        description = (
-            f"Generic wrapper for `{module_name}`. Pass the module `config` payload as a JSON string."
+        generic_tool = _make_generic_tool(
+            definition.module_name,
+            definition.tool_name,
+            definition.destructive,
         )
-        meta = {"humanInTheLoop": {"required": True}} if destructive else None
         mcp.tool(
             generic_tool,
-            name=tool_name,
-            description=description,
-            annotations=_tool_annotations(destructive=destructive),
-            meta=meta,
+            name=definition.tool_name,
+            description=definition.description,
+            annotations=_tool_annotations(destructive=definition.destructive),
+            meta=_catalog_meta(definition),
         )
 
 
 def _register_generic_playbook_generator_tools() -> None:
-    for module_name in GENERIC_PLAYBOOK_GENERATOR_MODULES:
-        base_name = module_name.removesuffix("_playbook_config_generator")
-        tool_name = f"generate_{base_name}_config"
+    available_generator_modules = set(GENERIC_PLAYBOOK_GENERATOR_MODULES)
+    for definition in TOOL_CATALOG.iter_workflow_tools("configuration_generation"):
+        if definition.module_name not in available_generator_modules:
+            continue
 
         def _make_generator_tool(module_name: str, tool_name: str):
             async def _generator_tool(
                 module_args_json: str | None = None,
                 tenant_id: str = "default",
+                catalyst_center: str | None = None,
                 ctx: Context | None = None,
             ) -> dict[str, Any]:
                 assert ctx is not None
@@ -675,25 +852,24 @@ def _register_generic_playbook_generator_tools() -> None:
                         tool_name=tool_name,
                         module_name=module_name,
                         tenant_id=tenant_id,
+                        catalyst_center=catalyst_center,
                         module_args=module_args,
                     )
                 ).model_dump()
 
             return _generator_tool
 
-        generator_tool = _make_generator_tool(module_name, tool_name)
-        description = (
-            f"Read-only wrapper for `{module_name}`. Pass the module arguments as a JSON "
-            "object string. If `state` is omitted, it defaults to `gathered`."
-        )
+        generator_tool = _make_generator_tool(definition.module_name, definition.tool_name)
         mcp.tool(
             generator_tool,
-            name=tool_name,
-            description=description,
+            name=definition.tool_name,
+            description=definition.description,
             annotations=_tool_annotations(read_only=True),
+            meta=_catalog_meta(definition),
         )
 
 
+_register_direct_tools()
 _register_generic_workflow_tools()
 _register_generic_playbook_generator_tools()
 

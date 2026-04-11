@@ -21,6 +21,7 @@ dependencies = [
   "pydantic>=2.12.0,<3.0.0",
   "pydantic-settings>=2.0.0,<3.0.0",
   "PyJWT>=2.10.0,<3.0.0",
+  "PyYAML>=6.0.0,<7.0.0",
   "redis>=6.0.0,<8.0.0",
   "sse-starlette>=3.0.0,<4.0.0",
   "uvicorn[standard]>=0.43.0,<1.0.0",
@@ -43,6 +44,8 @@ py-modules = [
   "redis_store",
   "settings",
   "models",
+  "cluster_registry",
+  "tool_registry",
 ]
 
 [tool.pytest.ini_options]

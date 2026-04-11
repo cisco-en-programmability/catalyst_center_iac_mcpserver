@@ -172,6 +172,7 @@ class TaskSubmissionResponse(BaseModel):
 class TaskRecord(BaseModel):
     task_id: str
     tenant_id: str
+    catalyst_center: str | None = None
     tool_name: str
     module_name: str
     status: TaskLifecycleStatus
@@ -201,6 +202,7 @@ class TaskRecord(BaseModel):
             "runnerIdent": self.runner_ident,
             "toolName": self.tool_name,
             "moduleName": self.module_name,
+            "catalystCenter": self.catalyst_center,
             "result": self.result,
             "events": self.events,
             "destructive": self.destructive,
