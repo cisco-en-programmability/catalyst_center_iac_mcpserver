@@ -1,0 +1,127 @@
+version: 1
+direct_tools: {}
+workflow_tools:
+  configuration_creation:
+    site_management:
+      - module_name: site_workflow_manager
+      - module_name: network_settings_workflow_manager
+      - module_name: tags_workflow_manager
+    ise_and_aaa:
+      - module_name: user_role_workflow_manager
+      - module_name: ise_radius_integration_workflow_manager
+    cli_templates:
+      - module_name: template_workflow_manager
+    pnp:
+      - module_name: pnp_workflow_manager
+    wireless:
+      - module_name: wireless_design_workflow_manager
+    network_profiles:
+      - module_name: network_profile_switching_workflow_manager
+      - module_name: network_profile_wireless_workflow_manager
+    assurance:
+      - module_name: assurance_issue_workflow_manager
+      - module_name: assurance_icap_settings_workflow_manager
+      - module_name: assurance_device_health_score_settings_workflow_manager
+    application_policy:
+      - module_name: application_policy_workflow_manager
+    events_and_notifications:
+      - module_name: events_and_notifications_workflow_manager
+    config_backups:
+      - module_name: device_configs_backup_workflow_manager
+      - module_name: backup_and_restore_workflow_manager
+        destructive: true
+    access_points_configuration:
+      - module_name: accesspoint_workflow_manager
+      - module_name: accesspoint_location_workflow_manager
+    discovery:
+      - module_name: discovery_workflow_manager
+      - module_name: device_credential_workflow_manager
+    inventory:
+      - module_name: inventory_workflow_manager
+      - module_name: network_devices_info_workflow_manager
+      - module_name: network_compliance_workflow_manager
+    provision:
+      - module_name: provision_workflow_manager
+    reports:
+      - module_name: reports_workflow_manager
+    path_trace:
+      - module_name: path_trace_workflow_manager
+    sd_access_fabric:
+      - module_name: sda_fabric_devices_workflow_manager
+      - module_name: sda_fabric_multicast_workflow_manager
+      - module_name: sda_fabric_sites_zones_workflow_manager
+      - module_name: sda_fabric_transits_workflow_manager
+      - module_name: sda_fabric_virtual_networks_workflow_manager
+      - module_name: sda_extranet_policies_workflow_manager
+      - module_name: fabric_devices_info_workflow_manager
+      - module_name: sda_host_port_onboarding_workflow_manager
+    lan_automation:
+      - module_name: lan_automation_workflow_manager
+    wired_campus:
+      - module_name: wired_campus_automation_workflow_manager
+    software_upgrade_swim:
+      - module_name: swim_workflow_manager
+    rma:
+      - module_name: rma_workflow_manager
+        destructive: true
+  configuration_generation:
+    site_management:
+      - module_name: site_playbook_config_generator
+      - module_name: network_settings_playbook_config_generator
+      - module_name: tags_playbook_config_generator
+    ise_and_aaa:
+      - module_name: user_role_playbook_config_generator
+      - module_name: ise_radius_integration_playbook_config_generator
+    cli_templates:
+      - module_name: template_playbook_config_generator
+    pnp:
+      - module_name: pnp_playbook_config_generator
+    wireless:
+      - module_name: wireless_design_playbook_config_generator
+    network_profiles:
+      - module_name: network_profile_switching_playbook_config_generator
+      - module_name: network_profile_wireless_playbook_config_generator
+    assurance:
+      - module_name: assurance_issue_playbook_config_generator
+      - module_name: assurance_icap_settings_playbook_config_generator
+      - module_name: assurance_device_health_score_settings_playbook_config_generator
+    application_policy:
+      - module_name: application_policy_playbook_config_generator
+    events_and_notifications:
+      - module_name: events_and_notifications_playbook_config_generator
+    config_backups:
+      - module_name: device_configs_backup_playbook_config_generator
+      - module_name: backup_and_restore_playbook_config_generator
+    access_points_configuration:
+      - module_name: accesspoint_playbook_config_generator
+      - module_name: accesspoint_location_playbook_config_generator
+    discovery:
+      - module_name: discovery_playbook_config_generator
+      - module_name: device_credential_playbook_config_generator
+    inventory:
+      - module_name: inventory_playbook_config_generator
+      - module_name: network_devices_info_playbook_config_generator
+      - module_name: network_compliance_playbook_config_generator
+    provision:
+      - module_name: provision_playbook_config_generator
+    reports:
+      - module_name: reports_playbook_config_generator
+    path_trace:
+      - module_name: path_trace_playbook_config_generator
+    sd_access_fabric:
+      - module_name: sda_fabric_devices_playbook_config_generator
+      - module_name: sda_fabric_multicast_playbook_config_generator
+      - module_name: sda_fabric_sites_zones_playbook_config_generator
+      - module_name: sda_fabric_transits_playbook_config_generator
+      - module_name: sda_fabric_virtual_networks_playbook_config_generator
+      - module_name: sda_extranet_policies_playbook_config_generator
+      - module_name: fabric_devices_info_playbook_config_generator
+      - module_name: sda_host_port_onboarding_playbook_config_generator
+    lan_automation:
+      - module_name: lan_automation_playbook_config_generator
+    wired_campus:
+      - module_name: wired_campus_automation_playbook_config_generator
+    software_upgrade_swim:
+      - module_name: swim_playbook_config_generator
+    rma:
+      - module_name: rma_playbook_config_generator

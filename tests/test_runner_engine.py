@@ -96,3 +96,21 @@ async def test_submit_module_supports_playbook_config_generator_args(tmp_path: P
     assert record.module_name == "site_playbook_config_generator"
     assert record.module_args["state"] == "gathered"
     assert "cisco.catalystcenter.site_playbook_config_generator" in playbook
+
+
+def test_resolve_credentials_uses_cluster_catalog_selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    settings = Settings(
+        runner_artifact_root=tmp_path,
+        catalyst_center_clusters_file=Path(__file__).resolve().parents[1] / "catalyst_center_clusters.yaml",
+    )
+    monkeypatch.setenv("CC_DEV_USERNAME", "cluster-user")
+    monkeypatch.setenv("CC_DEV_PASSWORD", "cluster-pass")
+    engine = RunnerEngine(settings, store=InMemoryTaskStore())
+
+    credentials, cluster_name = engine.resolve_credentials("default", catalyst_center="Portland")
+
+    assert cluster_name == "Portland"
+    assert credentials.host == "Portland-center.domain.com"
+    assert credentials.username == "cluster-user"
+    assert credentials.password == "cluster-pass"
+    assert credentials.version == "3.1.3.0"

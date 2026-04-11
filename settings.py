@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     task_ttl_seconds: int = 86400
     task_poll_interval_ms: int = 2000
     ansible_collection_namespace: str = "cisco.catalystcenter"
+    catalyst_center_clusters_file: Path = Field(
+        default_factory=lambda: Path("catalyst_center_clusters.yaml")
+    )
     catalystcenter_host: str | None = None
     catalystcenter_username: str | None = None
     catalystcenter_password: str | None = None
@@ -52,9 +55,24 @@ class Settings(BaseSettings):
         tenant = tenant_id.strip().upper().replace("-", "_")
         return f"CATALYSTCENTER_{tenant}_{field_name}"
 
+    @staticmethod
+    def cluster_env_name(cluster_slug: str, field_name: str) -> str:
+        cluster = cluster_slug.strip().upper().replace("-", "_")
+        if field_name:
+            return f"CC_{cluster}_{field_name}"
+        return f"CC_{cluster}"
+
+    @staticmethod
+    def legacy_cluster_env_name(cluster_slug: str, field_name: str) -> str:
+        cluster = cluster_slug.strip().upper().replace("-", "_")
+        if field_name:
+            return f"CATALYSTCENTER_CLUSTER_{cluster}_{field_name}"
+        return f"CATALYSTCENTER_CLUSTER_{cluster}"
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     settings = Settings()
     settings.runner_artifact_root.mkdir(parents=True, exist_ok=True)
+    settings.catalyst_center_clusters_file = settings.catalyst_center_clusters_file.expanduser()
     return settings

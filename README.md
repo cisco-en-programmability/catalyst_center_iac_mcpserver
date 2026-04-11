@@ -8,13 +8,16 @@ The server keeps the AI boundary flat and predictable, then translates those fla
 
 ## What It Does
 
-- Exposes high-level MCP tools for common Catalyst Center workflows
-- Exposes generic wrappers for all discovered `*_workflow_manager` modules
-- Exposes read-only wrappers for all discovered `*_playbook_config_generator` modules
+- Exposes typed direct MCP tools for common Catalyst Center workflows
+- Exposes generic wrappers for discovered `*_workflow_manager` modules
+- Exposes read-only wrappers for discovered `*_playbook_config_generator` modules
+- Organizes generic tools through a YAML catalog at [`tool_catalog.yaml`](/Users/pawansi/.codex/worktrees/c252/catalyst_center_iac_mcp/tool_catalog.yaml)
+- Supports multiple Catalyst Center clusters through [`catalyst_center_clusters.yaml`](/Users/pawansi/.codex/worktrees/c252/catalyst_center_iac_mcp/catalyst_center_clusters.yaml)
+- Exposes a read-only helper tool, `list_catalyst_centers`, so clients can inspect configured clusters
 - Returns task IDs immediately for long-running operations
 - Supports task polling at `GET /tasks/get/{task_id}`
 - Supports HTTP/SSE MCP transport
-- Supports tenant-scoped Catalyst Center credentials
+- Supports default, tenant-scoped, and cluster-scoped Catalyst Center routing
 - Supports optional OAuth/JWT validation
 - Supports Linux deployment with direct TLS or reverse-proxy HTTPS
 
@@ -22,9 +25,13 @@ With `cisco.catalystcenter 2.6.0`, the server currently discovers:
 
 - `39` `*_workflow_manager` modules
 - `30` `*_playbook_config_generator` modules
-- `78` MCP tools total, including specialized tools
+- plus direct typed tools implemented in Python for common workflows
 
 ## Tool Model
+
+Workflow-manager and config-generator registration is catalog-driven through [`tool_catalog.yaml`](/Users/pawansi/.codex/worktrees/c252/catalyst_center_iac_mcp/tool_catalog.yaml). Direct tools stay in Python and are intended for capabilities that are not already cleanly exposed by generic workflow-manager or config-generator tools.
+
+The current grouped inventory is also captured in [`TOOLS.md`](/Users/pawansi/.codex/worktrees/c252/catalyst_center_iac_mcp/TOOLS.md).
 
 ### Specialized Tools
 
@@ -69,6 +76,15 @@ Example:
 
 These tools accept `module_args_json` as a JSON object string. If `state` is omitted, the server sets it to `gathered`.
 
+### Cluster Selection
+
+Most tools also accept:
+
+- `tenant_id`: routes through the existing tenant-scoped environment variables
+- `catalyst_center`: selects an enabled cluster from [`catalyst_center_clusters.yaml`](/Users/pawansi/.codex/worktrees/c252/catalyst_center_iac_mcp/catalyst_center_clusters.yaml) by `name`, `label`, `location`, or `host`
+
+If `catalyst_center` is provided, cluster selection takes precedence over `tenant_id`.
+
 ## Architecture
 
 - `FastMCP`: MCP tool registration and request handling
@@ -79,6 +95,40 @@ These tools accept `module_args_json` as a JSON object string. If `state` is omi
 - `runner_engine.py`: module submission, ansible-runner lifecycle, artifact persistence
 
 The server is stateless by design. Redis and runner artifacts hold the operational state, which makes multi-instance deployment practical.
+
+## Multiple Catalyst Centers
+
+Use [`catalyst_center_clusters.yaml`](/Users/pawansi/.codex/worktrees/c252/catalyst_center_iac_mcp/catalyst_center_clusters.yaml) to define multiple Catalyst Center clusters that the MCP server can target by `name`, `label`, `location`, or `host`.
+
+Example:
+
+```yaml
+catalyst_centers:
+  - name: "Portland"
+    label: "dev"
+    host: "Portland-center.domain.com"
+    version: "3.1.3.0"
+    location: "Portland"
+    enabled: true
+  - name: "San Jose"
+    label: "produsion"
+    host: "SanJose-catalyst.domain.com"
+    version: "2.3.7.9"
+    location: "San Jose"
+    enabled: false
+```
+
+Cluster credentials stay in environment variables, not in YAML. For a cluster with label `dev`, set:
+
+```bash
+CC_DEV_USERNAME=automation
+CC_DEV_PASSWORD=change-me
+CC_DEV_VERIFY_SSL=false
+CC_DEV_PORT=443
+CC_DEV_VERSION=3.1.3.0
+```
+
+Then pass `catalyst_center="Portland"` or `catalyst_center="dev"` in any tool call. If `catalyst_center` is omitted, the server falls back to the existing `tenant_id` and default `CATALYSTCENTER_*` environment variables. The older `CATALYSTCENTER_CLUSTER_*` names are still accepted for backward compatibility.
 
 ## Requirements
 
@@ -389,6 +439,7 @@ MCP_TRANSPORT=http
 RUNNER_TIMEOUT_SECONDS=3600
 TASK_TTL_SECONDS=86400
 TASK_POLL_INTERVAL_MS=2000
+CATALYST_CENTER_CLUSTERS_FILE=./catalyst_center_clusters.yaml
 ```
 
 ### Direct TLS Environment Variables
@@ -423,6 +474,27 @@ CATALYSTCENTER_ACME_VERSION=2.6.0
 ```
 
 When invoking a tool, pass `tenant_id="acme"` to target that Catalyst Center instance.
+
+### Multi-Cluster Credentials
+
+Define the cluster inventory in [`catalyst_center_clusters.yaml`](/Users/pawansi/.codex/worktrees/c252/catalyst_center_iac_mcp/catalyst_center_clusters.yaml), then provide credentials by cluster label or slug:
+
+```bash
+CC_DEV_USERNAME=svc-dev
+CC_DEV_PASSWORD=dev-secret
+CC_DEV_VERIFY_SSL=false
+CC_DEV_PORT=443
+CC_DEV_VERSION=3.1.3.0
+```
+
+The older `CATALYSTCENTER_CLUSTER_*` variable names are still accepted for backward compatibility.
+
+### Routing Rules
+
+- Use `catalyst_center` when you want the model or caller to pick from a named Catalyst Center cluster inventory.
+- Use `tenant_id` when you want the legacy tenant-scoped environment variable routing.
+- If both are provided, `catalyst_center` takes precedence.
+- Use `list_catalyst_centers` to inspect enabled cluster names, labels, locations, and hosts before selecting one.
 
 An example environment file is included at [catalyst-center-iac-mcp.env.example](/Users/pawansi/workspace/catalyst_center_iac_mcp/deploy/env/catalyst-center-iac-mcp.env.example).
 
@@ -1049,6 +1121,8 @@ This returns current site configuration without making any changes.
 
 ### Multi-Tenant Usage
 
+This path is still supported for legacy tenant-scoped routing.
+
 **User Actions:**
 
 1. **Configure Second Tenant**
@@ -1083,6 +1157,47 @@ curl -X POST http://127.0.0.1:8000/mcp \
 
 Note the `"tenant_id": "acme"` parameter routes to the ACME Catalyst Center instance.
 
+### Multi-Cluster Usage
+
+If you have multiple Catalyst Center clusters configured, you can target one explicitly:
+
+```bash
+curl -X POST http://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "provision_site",
+      "arguments": {
+        "site_type": "building",
+        "name": "PDX-HQ",
+        "parent_path": "Global",
+        "catalyst_center": "Portland"
+      }
+    }
+  }'
+```
+
+You can also inspect configured clusters first with `list_catalyst_centers`.
+
+Example:
+
+```bash
+curl -X POST http://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "list_catalyst_centers",
+      "arguments": {}
+    }
+  }'
+```
+
 ---
 
 ## Usage Examples
@@ -1098,7 +1213,8 @@ result = await mcp.call_tool(
         "parent_path": "Global/USA/San Jose",
         "latitude": 37.3382,
         "longitude": -121.8863,
-        "tenant_id": "default"
+        "tenant_id": "default",
+        "catalyst_center": "Portland"
     }
 )
 ```
@@ -1130,7 +1246,8 @@ result = await mcp.call_tool(
     {
         "config_json": json.dumps(config),
         "state": "merged",
-        "tenant_id": "default"
+        "tenant_id": "default",
+        "catalyst_center": "Portland"
     }
 )
 ```
@@ -1157,12 +1274,19 @@ result = await mcp.call_tool(
     "generate_site_config",
     {
         "module_args_json": json.dumps(module_args),
-        "tenant_id": "default"
+        "tenant_id": "default",
+        "catalyst_center": "Portland"
     }
 )
 ```
 
-### Example 4: Poll Task Status Over HTTPS
+### Example 4: Discover Available Catalyst Centers
+
+```python
+result = await mcp.call_tool("list_catalyst_centers", {})
+```
+
+### Example 5: Poll Task Status Over HTTPS
 
 ```bash
 curl https://mcp.example.com/tasks/get/abc-123
