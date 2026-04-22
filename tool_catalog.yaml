@@ -1,5 +1,31 @@
 version: 1
-direct_tools: {}
+direct_tools:
+  site_management:
+    - handler: provision_site
+      module_name: site_workflow_manager
+      description: |
+        Create or update a site (area, building, or floor) in the Catalyst Center hierarchy.
+        Accepts flat parameters (site_type, name, parent_path, latitude, longitude, etc.) and transforms 
+        them into the nested config structure required by the site_workflow_manager.
+        This provides a simplified interface compared to the generic workflow tool.
+      destructive: false
+      
+    - handler: delete_site
+      module_name: site_workflow_manager
+      description: |
+        Delete a site from the Catalyst Center hierarchy.
+        Accepts a simple site_name_hierarchy parameter instead of complex nested config.
+        WARNING: This is a destructive operation that cannot be undone.
+      destructive: true
+      
+    - handler: configure_network_settings
+      module_name: network_settings_workflow_manager
+      description: |
+        Configure network-wide settings for a site including DHCP, DNS, NTP, SNMP, Syslog, and timezone.
+        Accepts flat parameters for each service and transforms them into the nested config structure.
+        Simplifies bulk network configuration management compared to the generic workflow tool.
+      destructive: false
+
 workflow_tools:
   configuration_creation:
     site_management:

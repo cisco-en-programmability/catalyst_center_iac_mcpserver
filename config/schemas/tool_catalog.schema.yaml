@@ -1,0 +1,487 @@
+# JSON Schema for tool_catalog.yaml validation
+# This schema can be used with YAML validators and IDEs for auto-completion
+
+$schema: http://json-schema.org/draft-07/schema#
+title: Catalyst Center IAC MCP Tool Catalog
+description: |
+  Schema for defining MCP tools in the Catalyst Center IAC server.
+  
+  This catalog supports three types of tools:
+  1. Direct Tools - Specialized tools with custom handlers and simplified parameters
+  2. Workflow Creation Tools - Generic tools that create/modify configuration (run_*)
+  3. Configuration Generation Tools - Read-only tools that query configuration (generate_*_config)
+  
+  Supported Categories:
+  - site_management: Site hierarchy, network settings, tags
+  - ise_and_aaa: User roles, ISE RADIUS integration
+  - cli_templates: Template management and deployment
+  - pnp: Plug and Play provisioning
+  - wireless: Wireless design and configuration
+  - network_profiles: Switching and wireless profiles
+  - assurance: Issue management, ICAP, health scores
+  - application_policy: Application-aware policies and QoS
+  - events_and_notifications: Event subscriptions and webhooks
+  - config_backups: Device config backups and system restore
+  - access_points_configuration: AP configuration and location
+  - discovery: Device discovery and credentials
+  - inventory: Device inventory, info, and compliance
+  - provision: Device provisioning workflows
+  - reports: Report generation and scheduling
+  - path_trace: Network path analysis
+  - sd_access_fabric: SD-Access fabric (devices, multicast, sites, transits, VNs, extranet, host ports)
+  - lan_automation: Automated LAN deployment
+  - wired_campus: Wired campus automation
+  - software_upgrade_swim: Software image management
+  - rma: Device replacement workflows
+  
+type: object
+
+required:
+  - version
+  - direct_tools
+  - workflow_tools
+
+properties:
+  version:
+    type: integer
+    description: Tool catalog schema version
+    enum: [1]
+    
+  direct_tools:
+    type: object
+    description: Specialized tools with custom handlers and transformers
+    additionalProperties:
+      type: array
+      items:
+        $ref: '#/definitions/DirectToolDefinition'
+        
+  workflow_tools:
+    type: object
+    description: Generic workflow-based tools
+    required:
+      - configuration_creation
+      - configuration_generation
+    properties:
+      configuration_creation:
+        type: object
+        description: Tools that create or modify configuration
+        additionalProperties:
+          type: array
+          items:
+            $ref: '#/definitions/WorkflowToolDefinition'
+            
+      configuration_generation:
+        type: object
+        description: Read-only tools that query configuration
+        additionalProperties:
+          type: array
+          items:
+            $ref: '#/definitions/WorkflowToolDefinition'
+
+definitions:
+  DirectToolDefinition:
+    type: object
+    description: Definition for a specialized direct tool
+    required:
+      - handler
+      - module_name
+      - description
+    properties:
+      handler:
+        type: string
+        description: Name of the tool handler function
+        pattern: '^[a-z][a-z0-9_]*$'
+        examples:
+          - provision_site
+          - delete_site
+          - deploy_template
+          
+      module_name:
+        type: string
+        description: Ansible workflow manager module name
+        pattern: '^[a-z][a-z0-9_]*_workflow_manager$'
+        examples:
+          - site_workflow_manager
+          - template_workflow_manager
+          - discovery_workflow_manager
+          
+      description:
+        type: string
+        description: Detailed description of the tool's purpose and usage
+        minLength: 10
+        
+      destructive:
+        type: boolean
+        description: Whether the tool performs destructive operations
+        default: false
+        
+  WorkflowToolDefinition:
+    type: object
+    description: Definition for a generic workflow tool
+    required:
+      - module_name
+    properties:
+      module_name:
+        type: string
+        description: Ansible module name (workflow_manager or playbook_config_generator)
+        pattern: '^[a-z][a-z0-9_]*_(workflow_manager|playbook_config_generator)$'
+        examples:
+          # Site Management
+          - site_workflow_manager
+          - site_playbook_config_generator
+          - network_settings_workflow_manager
+          - network_settings_playbook_config_generator
+          - tags_workflow_manager
+          - tags_playbook_config_generator
+          
+          # ISE and AAA
+          - user_role_workflow_manager
+          - user_role_playbook_config_generator
+          - ise_radius_integration_workflow_manager
+          - ise_radius_integration_playbook_config_generator
+          
+          # CLI Templates
+          - template_workflow_manager
+          - template_playbook_config_generator
+          
+          # Plug and Play
+          - pnp_workflow_manager
+          - pnp_playbook_config_generator
+          
+          # Wireless
+          - wireless_design_workflow_manager
+          - wireless_design_playbook_config_generator
+          
+          # Network Profiles
+          - network_profile_switching_workflow_manager
+          - network_profile_switching_playbook_config_generator
+          - network_profile_wireless_workflow_manager
+          - network_profile_wireless_playbook_config_generator
+          
+          # Assurance
+          - assurance_issue_workflow_manager
+          - assurance_issue_playbook_config_generator
+          - assurance_icap_settings_workflow_manager
+          - assurance_icap_settings_playbook_config_generator
+          - assurance_device_health_score_settings_workflow_manager
+          - assurance_device_health_score_settings_playbook_config_generator
+          
+          # Application Policy
+          - application_policy_workflow_manager
+          - application_policy_playbook_config_generator
+          
+          # Events and Notifications
+          - events_and_notifications_workflow_manager
+          - events_and_notifications_playbook_config_generator
+          
+          # Config Backups
+          - device_configs_backup_workflow_manager
+          - device_configs_backup_playbook_config_generator
+          - backup_and_restore_workflow_manager
+          - backup_and_restore_playbook_config_generator
+          
+          # Access Points
+          - accesspoint_workflow_manager
+          - accesspoint_playbook_config_generator
+          - accesspoint_location_workflow_manager
+          - accesspoint_location_playbook_config_generator
+          
+          # Discovery
+          - discovery_workflow_manager
+          - discovery_playbook_config_generator
+          - device_credential_workflow_manager
+          - device_credential_playbook_config_generator
+          
+          # Inventory
+          - inventory_workflow_manager
+          - inventory_playbook_config_generator
+          - network_devices_info_workflow_manager
+          - network_devices_info_playbook_config_generator
+          - network_compliance_workflow_manager
+          - network_compliance_playbook_config_generator
+          
+          # Provision
+          - provision_workflow_manager
+          - provision_playbook_config_generator
+          
+          # Reports
+          - reports_workflow_manager
+          - reports_playbook_config_generator
+          
+          # Path Trace
+          - path_trace_workflow_manager
+          - path_trace_playbook_config_generator
+          
+          # SD-Access Fabric
+          - sda_fabric_devices_workflow_manager
+          - sda_fabric_devices_playbook_config_generator
+          - sda_fabric_multicast_workflow_manager
+          - sda_fabric_multicast_playbook_config_generator
+          - sda_fabric_sites_zones_workflow_manager
+          - sda_fabric_sites_zones_playbook_config_generator
+          - sda_fabric_transits_workflow_manager
+          - sda_fabric_transits_playbook_config_generator
+          - sda_fabric_virtual_networks_workflow_manager
+          - sda_fabric_virtual_networks_playbook_config_generator
+          - sda_extranet_policies_workflow_manager
+          - sda_extranet_policies_playbook_config_generator
+          - fabric_devices_info_workflow_manager
+          - fabric_devices_info_playbook_config_generator
+          - sda_host_port_onboarding_workflow_manager
+          - sda_host_port_onboarding_playbook_config_generator
+          
+          # LAN Automation
+          - lan_automation_workflow_manager
+          - lan_automation_playbook_config_generator
+          
+          # Wired Campus
+          - wired_campus_automation_workflow_manager
+          - wired_campus_automation_playbook_config_generator
+          
+          # Software Upgrade (SWIM)
+          - swim_workflow_manager
+          - swim_playbook_config_generator
+          
+          # RMA
+          - rma_workflow_manager
+          - rma_playbook_config_generator
+          
+      description:
+        type: string
+        description: Optional custom description (auto-generated if omitted)
+        minLength: 10
+        
+      destructive:
+        type: boolean
+        description: Whether the tool performs destructive operations
+        default: false
+
+# Example valid tool catalog with all major categories
+examples:
+  - version: 1
+    direct_tools:
+      site_management:
+        - handler: provision_site
+          module_name: site_workflow_manager
+          description: |
+            Create or update a site (area, building, or floor) in the Catalyst Center hierarchy.
+            Accepts flat parameters and transforms them into nested config structure.
+          destructive: false
+          
+        - handler: delete_site
+          module_name: site_workflow_manager
+          description: |
+            Delete a site from the Catalyst Center hierarchy.
+            WARNING: This is a destructive operation.
+          destructive: true
+          
+      template_deployment:
+        - handler: deploy_template
+          module_name: template_workflow_manager
+          description: |
+            Deploy a CLI template to target devices with parameter substitution.
+          destructive: false
+          
+      fabric_devices:
+        - handler: onboard_fabric_devices
+          module_name: sda_fabric_devices_workflow_manager
+          description: |
+            Onboard devices to an SD-Access fabric as edge, border, or control plane nodes.
+          destructive: false
+          
+      discovery:
+        - handler: discover_devices
+          module_name: discovery_workflow_manager
+          description: |
+            Discover network devices using CDP, LLDP, IP range, or single IP discovery.
+          destructive: false
+          
+      inventory:
+        - handler: manage_inventory
+          module_name: inventory_workflow_manager
+          description: |
+            Manage device inventory - add devices to sites, update management IPs.
+          destructive: false
+          
+    workflow_tools:
+      configuration_creation:
+        site_management:
+          - module_name: site_workflow_manager
+          - module_name: network_settings_workflow_manager
+          - module_name: tags_workflow_manager
+            
+        ise_and_aaa:
+          - module_name: user_role_workflow_manager
+          - module_name: ise_radius_integration_workflow_manager
+            
+        cli_templates:
+          - module_name: template_workflow_manager
+            
+        pnp:
+          - module_name: pnp_workflow_manager
+            
+        wireless:
+          - module_name: wireless_design_workflow_manager
+            
+        network_profiles:
+          - module_name: network_profile_switching_workflow_manager
+          - module_name: network_profile_wireless_workflow_manager
+            
+        assurance:
+          - module_name: assurance_issue_workflow_manager
+          - module_name: assurance_icap_settings_workflow_manager
+          - module_name: assurance_device_health_score_settings_workflow_manager
+            
+        application_policy:
+          - module_name: application_policy_workflow_manager
+            
+        events_and_notifications:
+          - module_name: events_and_notifications_workflow_manager
+            
+        config_backups:
+          - module_name: device_configs_backup_workflow_manager
+          - module_name: backup_and_restore_workflow_manager
+            destructive: true
+            
+        access_points_configuration:
+          - module_name: accesspoint_workflow_manager
+          - module_name: accesspoint_location_workflow_manager
+            
+        discovery:
+          - module_name: discovery_workflow_manager
+          - module_name: device_credential_workflow_manager
+            
+        inventory:
+          - module_name: inventory_workflow_manager
+          - module_name: network_devices_info_workflow_manager
+          - module_name: network_compliance_workflow_manager
+            
+        provision:
+          - module_name: provision_workflow_manager
+            
+        reports:
+          - module_name: reports_workflow_manager
+            
+        path_trace:
+          - module_name: path_trace_workflow_manager
+            
+        sd_access_fabric:
+          - module_name: sda_fabric_devices_workflow_manager
+            description: "Manage SD-Access fabric device roles and configurations"
+          - module_name: sda_fabric_multicast_workflow_manager
+            description: "Configure multicast in SD-Access fabric"
+          - module_name: sda_fabric_sites_zones_workflow_manager
+            description: "Manage fabric sites and zones"
+          - module_name: sda_fabric_transits_workflow_manager
+            description: "Configure IP and SDA transit networks"
+          - module_name: sda_fabric_virtual_networks_workflow_manager
+            description: "Manage virtual networks (VNs) and segmentation"
+          - module_name: sda_extranet_policies_workflow_manager
+            description: "Configure inter-VN communication policies"
+          - module_name: fabric_devices_info_workflow_manager
+            description: "Query fabric device information"
+          - module_name: sda_host_port_onboarding_workflow_manager
+            description: "Configure host port onboarding for endpoints"
+            
+        lan_automation:
+          - module_name: lan_automation_workflow_manager
+            
+        wired_campus:
+          - module_name: wired_campus_automation_workflow_manager
+            
+        software_upgrade_swim:
+          - module_name: swim_workflow_manager
+            
+        rma:
+          - module_name: rma_workflow_manager
+            destructive: true
+            
+      configuration_generation:
+        site_management:
+          - module_name: site_playbook_config_generator
+          - module_name: network_settings_playbook_config_generator
+          - module_name: tags_playbook_config_generator
+            
+        ise_and_aaa:
+          - module_name: user_role_playbook_config_generator
+          - module_name: ise_radius_integration_playbook_config_generator
+            
+        cli_templates:
+          - module_name: template_playbook_config_generator
+            
+        pnp:
+          - module_name: pnp_playbook_config_generator
+            
+        wireless:
+          - module_name: wireless_design_playbook_config_generator
+            
+        network_profiles:
+          - module_name: network_profile_switching_playbook_config_generator
+          - module_name: network_profile_wireless_playbook_config_generator
+            
+        assurance:
+          - module_name: assurance_issue_playbook_config_generator
+          - module_name: assurance_icap_settings_playbook_config_generator
+          - module_name: assurance_device_health_score_settings_playbook_config_generator
+            
+        application_policy:
+          - module_name: application_policy_playbook_config_generator
+            
+        events_and_notifications:
+          - module_name: events_and_notifications_playbook_config_generator
+            
+        config_backups:
+          - module_name: device_configs_backup_playbook_config_generator
+          - module_name: backup_and_restore_playbook_config_generator
+            
+        access_points_configuration:
+          - module_name: accesspoint_playbook_config_generator
+          - module_name: accesspoint_location_playbook_config_generator
+            
+        discovery:
+          - module_name: discovery_playbook_config_generator
+          - module_name: device_credential_playbook_config_generator
+            
+        inventory:
+          - module_name: inventory_playbook_config_generator
+          - module_name: network_devices_info_playbook_config_generator
+          - module_name: network_compliance_playbook_config_generator
+            
+        provision:
+          - module_name: provision_playbook_config_generator
+            
+        reports:
+          - module_name: reports_playbook_config_generator
+            
+        path_trace:
+          - module_name: path_trace_playbook_config_generator
+            
+        sd_access_fabric:
+          - module_name: sda_fabric_devices_playbook_config_generator
+            description: "Query fabric device configurations"
+          - module_name: sda_fabric_multicast_playbook_config_generator
+            description: "Query multicast settings in fabric"
+          - module_name: sda_fabric_sites_zones_playbook_config_generator
+            description: "Query fabric sites and zones"
+          - module_name: sda_fabric_transits_playbook_config_generator
+            description: "Query transit network configurations"
+          - module_name: sda_fabric_virtual_networks_playbook_config_generator
+            description: "Query virtual network (VN) configurations"
+          - module_name: sda_extranet_policies_playbook_config_generator
+            description: "Query extranet policies"
+          - module_name: fabric_devices_info_playbook_config_generator
+            description: "Query detailed fabric device information"
+          - module_name: sda_host_port_onboarding_playbook_config_generator
+            description: "Query host port onboarding configurations"
+            
+        lan_automation:
+          - module_name: lan_automation_playbook_config_generator
+            
+        wired_campus:
+          - module_name: wired_campus_automation_playbook_config_generator
+            
+        software_upgrade_swim:
+          - module_name: swim_playbook_config_generator
+            
+        rma:
+          - module_name: rma_playbook_config_generator
