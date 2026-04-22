@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 from urllib.parse import urlparse
 from dataclasses import dataclass
 from pathlib import Path
@@ -261,12 +262,15 @@ class RunnerEngine:
         project_dir.mkdir(parents=True, exist_ok=True)
         inventory_dir.mkdir(parents=True, exist_ok=True)
 
+        ansible_python_interpreter = os.environ.get("ANSIBLE_PYTHON_INTERPRETER") or sys.executable
         playbook_name = "playbook.yml"
         playbook = f"""---
 - name: Execute Catalyst Center IaC workflow
   hosts: localhost
   gather_facts: false
   connection: local
+  vars:
+    ansible_python_interpreter: "{ansible_python_interpreter}"
   tasks:
     - name: Execute workflow manager
       {collection_namespace}.{module_name}: "{{{{ primary_module_args }}}}"
