@@ -4,18 +4,37 @@ Example: Provision a complete site hierarchy in Catalyst Center
 
 This example demonstrates how to use the provision_site tool to create
 a hierarchical site structure: Area -> Building -> Floor
+
+Requirements:
+- MCP server running with HTTPS (via NGINX or direct TLS)
+- Valid SSL certificate or set VERIFY_SSL=False for self-signed certs
+- Optional: OAuth token for authentication
 """
 
 import asyncio
+import os
 import httpx
 
 
 async def provision_site_hierarchy():
     """Create a complete site hierarchy using the MCP server."""
     
-    base_url = "http://localhost:8000"
+    # Configuration - update these for your environment
+    base_url = os.getenv("MCP_SERVER_URL", "https://mcp.example.com")
+    verify_ssl = os.getenv("VERIFY_SSL", "true").lower() == "true"
+    auth_token = os.getenv("MCP_AUTH_TOKEN")  # Optional OAuth token
     
-    async with httpx.AsyncClient() as client:
+    # Setup headers
+    headers = {"Content-Type": "application/json"}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    
+    # Create HTTPS client with SSL verification
+    async with httpx.AsyncClient(
+        verify=verify_ssl,
+        timeout=30.0,
+        headers=headers
+    ) as client:
         # Step 1: Create an Area
         print("Creating area: USA...")
         area_response = await client.post(
@@ -95,9 +114,23 @@ async def provision_site_hierarchy():
             
             if task_id:
                 print(f"\nPolling task status for: {task_id}")
-                status_response = await client.get(f"{base_url}/tasks/get/{task_id}")
+                status_response = await client.get(
+                    f"{base_url}/tasks/get/{task_id}",
+                    headers=headers
+                )
                 print(f"Task status: {status_response.json()}")
 
 
 if __name__ == "__main__":
+    # Example environment variables:
+    # export MCP_SERVER_URL="https://mcp.example.com"
+    # export VERIFY_SSL="true"  # Set to "false" for self-signed certs
+    # export MCP_AUTH_TOKEN="your-oauth-token"  # Optional
+    
+    print("MCP Server HTTPS Example - Site Provisioning")
+    print(f"Server: {os.getenv('MCP_SERVER_URL', 'https://mcp.example.com')}")
+    print(f"SSL Verification: {os.getenv('VERIFY_SSL', 'true')}")
+    print(f"Authentication: {'Enabled' if os.getenv('MCP_AUTH_TOKEN') else 'Disabled'}")
+    print("-" * 60)
+    
     asyncio.run(provision_site_hierarchy())

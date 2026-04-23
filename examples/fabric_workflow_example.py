@@ -6,9 +6,15 @@ This example demonstrates a complete SD-Access fabric setup workflow:
 1. Create fabric site
 2. Onboard fabric devices
 3. Configure virtual networks
+
+Requirements:
+- MCP server running with HTTPS
+- Valid SSL certificate or set VERIFY_SSL=False for self-signed certs
+- Optional: OAuth token for authentication
 """
 
 import asyncio
+import os
 import httpx
 import json
 
@@ -16,9 +22,21 @@ import json
 async def setup_sda_fabric():
     """Complete SD-Access fabric setup workflow."""
     
-    base_url = "http://localhost:8000"
+    # Configuration
+    base_url = os.getenv("MCP_SERVER_URL", "https://mcp.example.com")
+    verify_ssl = os.getenv("VERIFY_SSL", "true").lower() == "true"
+    auth_token = os.getenv("MCP_AUTH_TOKEN")
     
-    async with httpx.AsyncClient() as client:
+    # Setup headers
+    headers = {"Content-Type": "application/json"}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    
+    async with httpx.AsyncClient(
+        verify=verify_ssl,
+        timeout=60.0,
+        headers=headers
+    ) as client:
         # Step 1: Create fabric site using generic tool
         print("Step 1: Creating fabric site...")
         
@@ -58,11 +76,14 @@ async def setup_sda_fabric():
                 "id": 2,
                 "method": "tools/call",
                 "params": {
-                    "name": "onboard_fabric_devices",
+                    "name": "run_sda_fabric_devices_workflow_manager",
                     "arguments": {
-                        "fabric_name": "Global/USA/San Jose HQ",
-                        "device_ip": "10.10.10.50",
-                        "device_roles": ["BORDER_NODE", "CONTROL_PLANE_NODE"],
+                        "config_json": json.dumps([{
+                            "fabric_site_name_hierarchy": "Global/USA/San Jose HQ",
+                            "device_ip": "10.10.10.50",
+                            "device_roles": ["BORDER_NODE", "CONTROL_PLANE_NODE"]
+                        }]),
+                        "state": "merged",
                         "tenant_id": "default"
                     }
                 }
@@ -103,4 +124,10 @@ async def setup_sda_fabric():
 
 
 if __name__ == "__main__":
+    print("MCP Server HTTPS Example - SD-Access Fabric Workflow")
+    print(f"Server: {os.getenv('MCP_SERVER_URL', 'https://mcp.example.com')}")
+    print(f"SSL Verification: {os.getenv('VERIFY_SSL', 'true')}")
+    print(f"Authentication: {'Enabled' if os.getenv('MCP_AUTH_TOKEN') else 'Disabled'}")
+    print("-" * 60)
+    
     asyncio.run(setup_sda_fabric())

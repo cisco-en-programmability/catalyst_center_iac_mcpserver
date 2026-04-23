@@ -4,70 +4,131 @@ A FastMCP server that exposes Cisco Catalyst Center automation as MCP tools for 
 
 ## What It Does
 
-- **78+ MCP tools** for Catalyst Center workflows
-- **Specialized tools**: `provision_site`, `deploy_template`, `discover_devices`
-- **Generic workflow tools**: All `*_workflow_manager` modules
-- **Read-only config tools**: All `*_playbook_config_generator` modules
+- **72 MCP tools** for Catalyst Center workflows
+- **3 Direct tools**: Simplified interfaces for common operations
+- **39 Workflow tools**: Full control over Catalyst Center configuration
+- **30 Config generators**: Read-only tools for querying current state
 - **Async task execution** with Redis persistence
 - **Multi-tenant support** for multiple Catalyst Center instances
 - **Cluster support** through YAML catalog configuration
 - **Version fallback** for automatic Catalyst Center compatibility
+- **Schema-driven** tool registry for easy maintenance
 
 ## Quick Start
 
 ### 1. Prerequisites
 
-### Specialized Tools
+```bash
+# Python 3.11+
+python3 --version
 
-- `provision_site`
-- `delete_site`
-- `deploy_template`
-- `onboard_fabric_devices`
-- `reprovision_fabric_device`
-- `manage_assurance_issues`
-- `discover_devices`
-- `manage_inventory`
-- `configure_network_settings`
+# Redis 6.0+
+redis-cli ping  # Should return "PONG"
 
-These are the preferred tools for common workflows because they keep the LLM-facing interface flat and typed.
+# Ansible Collection
+ansible-galaxy collection install cisco.catalystcenter:==2.6.0
+```
 
-### Generic Workflow Tools
+### 2. Install
 
-Generic workflow tools are registered as:
+```bash
+# Clone repository
+git clone https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver.git
+cd catalyst_center_iac_mcpserver
 
-- `run_<module_name>`
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-Example:
+# Install
+pip install .
+```
 
-- `run_site_workflow_manager`
-- `run_inventory_workflow_manager`
-- `run_sda_fabric_devices_workflow_manager`
+### 3. Configure
 
-These tools accept `config_json` as a JSON string representing the module `config` payload.
+```bash
+# Create config directory
+mkdir -p ~/.config/catalyst-center-iac-mcp
 
-### Generic Config Generator Tools
+# Create environment file
+cat > ~/.config/catalyst-center-iac-mcp/env << 'EOF'
+REDIS_URL=redis://127.0.0.1:6379/0
+RUNNER_ARTIFACT_ROOT=$HOME/.local/share/catalyst-center-iac-mcp/artifacts
 
-Read-only config generator tools are registered as:
+CATALYSTCENTER_HOST=your-catalyst-center.example.com
+CATALYSTCENTER_USERNAME=admin
+CATALYSTCENTER_PASSWORD=your-password
+CATALYSTCENTER_VERIFY_SSL=false
+CATALYSTCENTER_PORT=443
+CATALYSTCENTER_VERSION=2.6.0
 
-- `generate_<domain>_config`
+SERVER_HOST=127.0.0.1
+SERVER_PORT=8000
+EOF
 
-Example:
+# Edit with your credentials
+nano ~/.config/catalyst-center-iac-mcp/env
+```
 
-- `generate_site_config`
-- `generate_inventory_config`
-- `generate_template_config`
-- `generate_network_settings_config`
+### 4. Run
 
-These tools accept `module_args_json` as a JSON object string. If `state` is omitted, the server sets it to `gathered`.
+```bash
+# Load environment and start
+export $(grep -v '^#' ~/.config/catalyst-center-iac-mcp/env | xargs)
+catalyst-center-iac-mcp
+```
+
+Server will be available at: `http://127.0.0.1:8000`
+
+### 5. Test
+
+```bash
+# Health check
+curl http://127.0.0.1:8000/healthz
+
+# List available tools
+curl -X POST http://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+## Tool Categories
+
+### Direct Tools (3)
+
+Simplified interfaces for common operations:
+
+- **`provision_site`** - Create/update sites with flat parameters
+- **`delete_site`** - Delete sites (destructive)
+- **`configure_network_settings`** - Configure DHCP, DNS, NTP, SNMP, Syslog
+
+### Workflow Tools (39)
+
+Full control over configuration (pattern: `run_<module>_workflow_manager`):
+
+- Site management, ISE/AAA, templates, PnP, wireless
+- Network profiles, assurance, application policy
+- Discovery, inventory, provisioning, reports
+- **SD-Access fabric** (8 tools), LAN automation, RMA
+
+### Config Generators (30)
+
+Read-only tools for querying state (pattern: `generate_<domain>_config`):
+
+- Query current configuration without making changes
+- Default to `state: gathered` for safe operations
+- Same categories as workflow tools
+
+See [TOOLS.md](TOOLS.md) for complete tool inventory.
 
 ### Cluster Selection
 
-Most tools also accept:
+Most tools accept:
 
-- `tenant_id`: routes through the existing tenant-scoped environment variables
-- `catalyst_center`: selects an enabled cluster from [`catalyst_center_clusters.yaml`](/Users/pawansi/.codex/worktrees/c252/catalyst_center_iac_mcp/catalyst_center_clusters.yaml) by `name`, `label`, `location`, or `host`
+- **`tenant_id`**: Routes through tenant-scoped environment variables
+- **`catalyst_center`**: Selects cluster from `catalyst_center_clusters.yaml` by name, label, location, or host
 
-If `catalyst_center` is provided, cluster selection takes precedence over `tenant_id`.
+If both provided, `catalyst_center` takes precedence.
 
 ## Architecture
 
@@ -129,39 +190,57 @@ Choose your platform and deployment mode:
 ### macOS Installation
 
 #### Prerequisites
->>>>>>> c215d6036b2dcf7d1cd4558c49a01e1b7391fe86
 
 ```bash
-# Python 3.11+
-python --version
+# Install Homebrew (if not already installed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# Redis 6.0+
-redis-cli ping  # Should return "PONG"
+# Install Python 3.11+
+brew install python@3.11
 
-# Ansible Collection
+# Install Redis
+brew install redis
+brew services start redis
+
+# Verify installations
+python3 --version  # Should be 3.11+
+redis-cli ping     # Should return "PONG"
+```
+
+#### Install MCP Server
+
+```bash
+# Clone repository
+git clone https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver.git
+cd catalyst_center_iac_mcpserver
+
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install --upgrade pip setuptools wheel
+pip install .
+
+# Install Ansible collection
 ansible-galaxy collection install cisco.catalystcenter:==2.6.0
 ```
 
-### 2. Install
+#### Configure
 
 ```bash
-# Clone and install
-git clone https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver.git
-cd catalyst_center_iac_mcpserver
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install .
-```
-
-### 3. Configure
-
-Create environment file:
-```bash
+# Create config directory
 mkdir -p ~/.config/catalyst-center-iac-mcp
+
+# Create environment file
 cat > ~/.config/catalyst-center-iac-mcp/env << 'EOF'
+# Redis Configuration
 REDIS_URL=redis://127.0.0.1:6379/0
+
+# Artifact Storage
 RUNNER_ARTIFACT_ROOT=$HOME/.local/share/catalyst-center-iac-mcp/artifacts
 
+# Catalyst Center Credentials
 CATALYSTCENTER_HOST=your-catalyst-center.example.com
 CATALYSTCENTER_USERNAME=admin
 CATALYSTCENTER_PASSWORD=your-password
@@ -169,16 +248,26 @@ CATALYSTCENTER_VERIFY_SSL=false
 CATALYSTCENTER_PORT=443
 CATALYSTCENTER_VERSION=2.6.0
 
+# Server Configuration
 SERVER_HOST=127.0.0.1
 SERVER_PORT=8000
 EOF
+
+# Edit with your actual credentials
+nano ~/.config/catalyst-center-iac-mcp/env
 ```
 
-### 4. Run
+#### Run
 
 ```bash
-# Load environment and start
+# Activate virtual environment
+cd ~/path/to/catalyst_center_iac_mcpserver
+source .venv/bin/activate
+
+# Load environment variables
 export $(grep -v '^#' ~/.config/catalyst-center-iac-mcp/env | xargs)
+
+# Start server
 catalyst-center-iac-mcp
 ```
 
@@ -689,20 +778,33 @@ CATALYSTCENTER_PASSWORD=your-password
 
 ```bash
 # macOS
-cd ~/workspace/catalyst_center_iac_mcpserver
+cd ~/path/to/catalyst_center_iac_mcpserver
 source .venv/bin/activate
->>>>>>> c215d6036b2dcf7d1cd4558c49a01e1b7391fe86
 export $(grep -v '^#' ~/.config/catalyst-center-iac-mcp/env | xargs)
 catalyst-center-iac-mcp
+
+# Linux
+sudo systemctl start catalyst-center-iac-mcp
 ```
 
 Server runs at: `http://127.0.0.1:8000`
+
+**Step 4: Verify Server is Running**
+
+```bash
+# Health check
+curl http://127.0.0.1:8000/healthz
+
+# Should return: {"status":"healthy"}
+```
 
 ## Usage
 
 ### With Claude Desktop
 
 Add to `claude_desktop_config.json`:
+
+**Local HTTP:**
 ```json
 {
   "mcpServers": {
@@ -714,37 +816,121 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-### Key Tools
-
-**Site Management:**
-```python
-# Create site hierarchy
-provision_site(site_type="building", name="HQ", parent_path="Global/USA")
+**Production HTTPS:**
+```json
+{
+  "mcpServers": {
+    "catalyst-center": {
+      "url": "https://mcp.example.com/mcp",
+      "transport": "http"
+    }
+  }
+}
 ```
 
-**Device Discovery:**
-```python
-# Discover devices
-discover_devices(discovery_type="CIDR", ip_address_list=["10.10.10.0/24"])
+### Example Tool Calls
+
+#### 1. Create Site Hierarchy
+
+```bash
+curl -X POST http://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "provision_site",
+      "arguments": {
+        "site_type": "building",
+        "name": "San Jose HQ",
+        "parent_path": "Global/USA",
+        "latitude": 37.3382,
+        "longitude": -121.8863
+      }
+    }
+  }'
 ```
 
-**Template Deployment:**
-```python
-# Deploy configuration template
-deploy_template(template_name="Switch-Config", devices=["switch1", "switch2"])
+#### 2. Configure Network Settings
+
+```bash
+curl -X POST http://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "configure_network_settings",
+      "arguments": {
+        "site_name": "Global/USA/San Jose HQ",
+        "dhcp_servers": ["10.10.10.10"],
+        "dns_servers": ["8.8.8.8", "8.8.4.4"],
+        "ntp_servers": ["time.nist.gov"],
+        "timezone": "America/Los_Angeles"
+      }
+    }
+  }'
+```
+
+#### 3. Query Current Configuration (Read-Only)
+
+```bash
+curl -X POST http://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "generate_site_config",
+      "arguments": {
+        "module_args_json": "{\"config\":{\"component_specific_filters\":{\"site\":[{\"parent_name_hierarchy\":\"Global/USA\",\"site_type\":[\"building\"]}]}}}"
+      }
+    }
+  }'
 ```
 
 ### Task Polling
 
-Long operations return task IDs:
+Long operations return task IDs. Poll for completion:
+
 ```bash
-# Check task status
-curl http://127.0.0.1:8000/tasks/get/{task_id}
+# Extract task ID from response
+TASK_ID="abc-123-def-456"
+
+# Poll task status
+curl http://127.0.0.1:8000/tasks/get/$TASK_ID
+
+# Response includes status, progress, and results
+{
+  "taskId": "abc-123-def-456",
+  "status": "completed",
+  "progress": 100,
+  "total": 100,
+  "statusMessage": "Task completed successfully",
+  "result": {...}
+}
 ```
 
-## Multi-Tenant Support
+### Python Examples
 
-Add tenant-specific credentials:
+See [examples/](examples/) directory for complete Python examples:
+
+- **`provision_site_example.py`** - Site hierarchy creation
+- **`discovery_example.py`** - Device discovery with polling
+- **`fabric_workflow_example.py`** - SD-Access fabric setup
+- **`network_settings_example.py`** - Network settings configuration
+- **`HTTPS_SETUP.md`** - HTTPS configuration guide
+
+All examples support HTTPS with SSL verification and OAuth authentication.
+
+## Multi-Tenant & Multi-Cluster Support
+
+### Multi-Tenant (Legacy)
+
+Add tenant-specific credentials to environment:
 
 **Step 2: Extract Task ID from Response**
 

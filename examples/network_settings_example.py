@@ -4,9 +4,15 @@ Example: Configure network settings for a site
 
 This example demonstrates configuring DNS, NTP, DHCP, and other network
 settings for a specific site in the hierarchy.
+
+Requirements:
+- MCP server running with HTTPS
+- Valid SSL certificate or set VERIFY_SSL=False for self-signed certs
+- Optional: OAuth token for authentication
 """
 
 import asyncio
+import os
 import httpx
 import json
 
@@ -14,9 +20,21 @@ import json
 async def configure_site_network_settings():
     """Configure comprehensive network settings for a site."""
     
-    base_url = "http://localhost:8000"
+    # Configuration
+    base_url = os.getenv("MCP_SERVER_URL", "https://mcp.example.com")
+    verify_ssl = os.getenv("VERIFY_SSL", "true").lower() == "true"
+    auth_token = os.getenv("MCP_AUTH_TOKEN")
     
-    async with httpx.AsyncClient() as client:
+    # Setup headers
+    headers = {"Content-Type": "application/json"}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    
+    async with httpx.AsyncClient(
+        verify=verify_ssl,
+        timeout=30.0,
+        headers=headers
+    ) as client:
         print("Configuring network settings for Global/USA/San Jose HQ...")
         
         response = await client.post(
@@ -55,10 +73,19 @@ async def configure_site_network_settings():
                 print(f"\nPolling task: {task_id}")
                 await asyncio.sleep(5)
                 
-                status_response = await client.get(f"{base_url}/tasks/get/{task_id}")
+                status_response = await client.get(
+                    f"{base_url}/tasks/get/{task_id}",
+                    headers=headers
+                )
                 status = status_response.json()
                 print(f"Task status: {json.dumps(status, indent=2)}")
 
 
 if __name__ == "__main__":
+    print("MCP Server HTTPS Example - Network Settings Configuration")
+    print(f"Server: {os.getenv('MCP_SERVER_URL', 'https://mcp.example.com')}")
+    print(f"SSL Verification: {os.getenv('VERIFY_SSL', 'true')}")
+    print(f"Authentication: {'Enabled' if os.getenv('MCP_AUTH_TOKEN') else 'Disabled'}")
+    print("-" * 60)
+    
     asyncio.run(configure_site_network_settings())
