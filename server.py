@@ -782,7 +782,15 @@ async def lifespan(_: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
+    mcp_app = mcp.http_app(path="/", transport=settings.mcp_transport, stateless_http=True)
+
+    @asynccontextmanager
+    async def combined_lifespan(app: FastAPI):
+        async with lifespan(app):
+            async with mcp_app.lifespan(app):
+                yield
+
+    app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=combined_lifespan)
     app.add_middleware(NoBufferingMiddleware)
 
     @app.get("/healthz")
@@ -801,10 +809,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=403, detail="taskId does not belong to this tenant")
         return JSONResponse(task.to_status_payload())
 
-    app.mount(
-        settings.mcp_path,
-        mcp.http_app(path="/", transport=settings.mcp_transport, stateless_http=True),
-    )
+    app.mount(settings.mcp_path, mcp_app)
     return app
 
 
