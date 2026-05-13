@@ -106,7 +106,7 @@ for definition in TOOL_CATALOG.iter_workflow_tools("configuration_generation"):
 ┌─────────────────────────────────────┐
 │  Tool Catalog                       │
 │  tool_catalog.yaml                  │
-│  - 9 direct tools                   │
+│  - 5 direct tools                   │
 │  - 39 workflow creation tools       │
 │  - 30 config generation tools       │
 └──────────────┬──────────────────────┘
@@ -175,33 +175,31 @@ The schema defines 21 categories across all tool types:
 
 | Category | Direct Tools | Workflow Tools | Config Generators | Total |
 |----------|--------------|----------------|-------------------|-------|
-| site_management | 2 | 3 | 3 | 8 |
+| site_management | 3 | 3 | 3 | 9 |
+| cluster_management | 2 | 0 | 0 | 2 |
 | ise_and_aaa | 0 | 2 | 2 | 4 |
-| cli_templates | 1 | 1 | 1 | 3 |
+| cli_templates | 0 | 1 | 1 | 2 |
 | pnp | 0 | 1 | 1 | 2 |
 | wireless | 0 | 1 | 1 | 2 |
 | network_profiles | 0 | 2 | 2 | 4 |
-| assurance | 1 | 3 | 3 | 7 |
+| assurance | 0 | 3 | 2 | 5 |
 | application_policy | 0 | 1 | 1 | 2 |
 | events_and_notifications | 0 | 1 | 1 | 2 |
-| config_backups | 0 | 2 | 2 | 4 |
+| config_backups | 0 | 2 | 1 | 3 |
 | access_points_configuration | 0 | 2 | 2 | 4 |
-| discovery | 1 | 2 | 2 | 5 |
-| inventory | 1 | 3 | 3 | 7 |
+| discovery | 0 | 2 | 2 | 4 |
+| inventory | 0 | 3 | 1 | 4 |
 | provision | 0 | 1 | 1 | 2 |
-| reports | 0 | 1 | 1 | 2 |
-| path_trace | 0 | 1 | 1 | 2 |
-| **sd_access_fabric** | **2** | **8** | **8** | **18** |
-| lan_automation | 0 | 1 | 1 | 2 |
+| reports | 0 | 1 | 0 | 1 |
+| path_trace | 0 | 1 | 0 | 1 |
+| **sd_access_fabric** | **0** | **8** | **7** | **15** |
+| lan_automation | 0 | 1 | 0 | 1 |
 | wired_campus | 0 | 1 | 1 | 2 |
-| software_upgrade_swim | 0 | 1 | 1 | 2 |
+| software_upgrade_swim | 0 | 1 | 0 | 1 |
 | rma | 0 | 1 | 1 | 2 |
-| network_settings | 1 | 0 | 0 | 1 |
-| template_deployment | 1 | 0 | 0 | 1 |
-| fabric_devices | 2 | 0 | 0 | 2 |
-| **TOTAL** | **9** | **39** | **30** | **78** |
+| **TOTAL** | **5** | **39** | **30** | **74** |
 
-*Note: Some categories appear only in direct_tools (network_settings, template_deployment, fabric_devices)*
+*Note: `cluster_management` represents the two server-registered Catalyst Center listing tools that are not sourced from `tool_catalog.yaml`.*
 
 ---
 
@@ -235,10 +233,10 @@ python3 scripts/manage_tool_catalog.py validate
 # ✅ Tool uniqueness: Verified
 # 
 # 📊 Tool Statistics:
-#    Direct tools: 9
+#    Direct tools: 5
 #    Workflow creation tools: 39
 #    Workflow generation tools: 30
-#    Total tools: 78
+#    Total tools: 74
 # 
 # ✅ Validation successful!
 ```
@@ -421,7 +419,7 @@ curl http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 
-# Should return 78+ tools
+# Should return 74 tools
 ```
 
 ---
@@ -494,5 +492,5 @@ The schema-driven architecture provides:
 
 **Last Updated**: April 22, 2026  
 **Schema Version**: 1.0  
-**Total Tools**: 78 (9 direct + 39 workflow + 30 generators)  
-**Collection Version**: cisco.catalystcenter 2.6.0
+**Total Tools**: 74 (5 direct + 39 workflow + 30 generators)  
+**Collection Version**: cisco.catalystcenter 2.8.0

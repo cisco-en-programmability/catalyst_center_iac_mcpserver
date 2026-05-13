@@ -31,6 +31,11 @@ class WorkflowState(str, Enum):
     GATHERED = "gathered"
 
 
+class WorkflowMutationState(str, Enum):
+    MERGED = "merged"
+    DELETED = "deleted"
+
+
 class FabricDeviceRole(str, Enum):
     BORDER_NODE = "BORDER_NODE"
     EDGE_NODE = "EDGE_NODE"

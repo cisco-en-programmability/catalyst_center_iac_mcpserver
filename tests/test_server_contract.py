@@ -65,6 +65,10 @@ def test_catalog_metadata_is_attached_to_registered_tools():
     assert by_name["provision_site"].meta["catalog"]["topCategory"] == "direct_tools"
     assert by_name["provision_site"].meta["catalog"]["subcategory"] == "site_management"
     assert by_name["run_site_workflow_manager"].meta["catalog"]["workflowCategory"] == "configuration_creation"
+    assert by_name["run_inventory_workflow_manager"].parameters["properties"]["state"]["enum"] == [
+        "merged",
+        "deleted",
+    ]
 
 
 def test_cluster_listing_tool_is_registered():

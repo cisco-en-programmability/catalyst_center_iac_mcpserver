@@ -109,14 +109,12 @@ workflow_tools:
       - module_name: network_profile_wireless_playbook_config_generator
     assurance:
       - module_name: assurance_issue_playbook_config_generator
-      - module_name: assurance_icap_settings_playbook_config_generator
       - module_name: assurance_device_health_score_settings_playbook_config_generator
     application_policy:
       - module_name: application_policy_playbook_config_generator
     events_and_notifications:
       - module_name: events_and_notifications_playbook_config_generator
     config_backups:
-      - module_name: device_configs_backup_playbook_config_generator
       - module_name: backup_and_restore_playbook_config_generator
     access_points_configuration:
       - module_name: accesspoint_playbook_config_generator
@@ -126,14 +124,8 @@ workflow_tools:
       - module_name: device_credential_playbook_config_generator
     inventory:
       - module_name: inventory_playbook_config_generator
-      - module_name: network_devices_info_playbook_config_generator
-      - module_name: network_compliance_playbook_config_generator
     provision:
       - module_name: provision_playbook_config_generator
-    reports:
-      - module_name: reports_playbook_config_generator
-    path_trace:
-      - module_name: path_trace_playbook_config_generator
     sd_access_fabric:
       - module_name: sda_fabric_devices_playbook_config_generator
       - module_name: sda_fabric_multicast_playbook_config_generator
@@ -141,13 +133,8 @@ workflow_tools:
       - module_name: sda_fabric_transits_playbook_config_generator
       - module_name: sda_fabric_virtual_networks_playbook_config_generator
       - module_name: sda_extranet_policies_playbook_config_generator
-      - module_name: fabric_devices_info_playbook_config_generator
       - module_name: sda_host_port_onboarding_playbook_config_generator
-    lan_automation:
-      - module_name: lan_automation_playbook_config_generator
     wired_campus:
       - module_name: wired_campus_automation_playbook_config_generator
-    software_upgrade_swim:
-      - module_name: swim_playbook_config_generator
     rma:
       - module_name: rma_playbook_config_generator

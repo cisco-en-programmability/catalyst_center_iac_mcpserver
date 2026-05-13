@@ -30,6 +30,7 @@ from models import (
     TaskSubmissionResponse,
     TemplateDeployRequest,
     TemplateFailurePolicy,
+    WorkflowMutationState,
     WorkflowState,
 )
 from runner_engine import RunnerEngine, get_runner_engine
@@ -617,6 +618,28 @@ async def list_catalyst_centers() -> dict[str, Any]:
                 "enabled": cluster.enabled,
                 "credentialEnvPrefix": settings.cluster_env_name(cluster.slug, ""),
             }
+            for cluster in CLUSTER_CATALOG.enabled_clusters()
+        ]
+    }
+
+
+@mcp.tool(
+    name="list_configured_catalyst_centers",
+    description="List all Catalyst Center clusters defined in catalyst_center_clusters.yaml, including disabled entries.",
+    annotations=_tool_annotations(read_only=True),
+)
+async def list_configured_catalyst_centers() -> dict[str, Any]:
+    return {
+        "catalystCenters": [
+            {
+                "name": cluster.name,
+                "label": cluster.label,
+                "host": cluster.host,
+                "version": cluster.version,
+                "location": cluster.location,
+                "enabled": cluster.enabled,
+                "credentialEnvPrefix": settings.cluster_env_name(cluster.slug, ""),
+            }
             for cluster in CLUSTER_CATALOG.catalyst_centers
         ]
     }
@@ -688,7 +711,7 @@ def _register_generic_workflow_tools() -> None:
         ):
             async def _generic_tool(
                 config_json: str,
-                state: WorkflowState = WorkflowState.MERGED,
+                state: WorkflowMutationState = WorkflowMutationState.MERGED,
                 tenant_id: str = "default",
                 catalyst_center: str | None = None,
                 ctx: Context | None = None,
