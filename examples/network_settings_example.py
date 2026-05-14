@@ -67,7 +67,7 @@ async def configure_site_network_settings():
         if "result" in result and "content" in result["result"]:
             task_text = result["result"]["content"][0]["text"]
             task_data = json.loads(task_text)
-            task_id = task_data.get("taskId")
+            task_id = task_data.get("iacTaskId") or task_data.get("taskId")
             
             if task_id:
                 print(f"\nPolling task: {task_id}")

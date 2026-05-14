@@ -107,10 +107,10 @@ async def provision_site_hierarchy():
         # Poll task status
         if "result" in floor_result and "content" in floor_result["result"]:
             task_id = floor_result["result"]["content"][0]["text"]
-            # Extract taskId from response
+            # Extract iacTaskId from response
             import json
             task_data = json.loads(task_id)
-            task_id = task_data.get("taskId")
+            task_id = task_data.get("iacTaskId") or task_data.get("taskId")
             
             if task_id:
                 print(f"\nPolling task status for: {task_id}")

@@ -170,8 +170,8 @@ class NetworkSettingsRequest(BaseModel):
 
 
 class TaskSubmissionResponse(BaseModel):
-    taskId: str
-    status: Literal["submitted"] = "submitted"
+    iacTaskId: str
+    iacStatus: Literal["submitted"] = "submitted"
 
 
 class TaskRecord(BaseModel):
@@ -196,19 +196,19 @@ class TaskRecord(BaseModel):
 
     def to_status_payload(self) -> dict[str, Any]:
         return {
-            "taskId": self.task_id,
-            "status": self.status.value,
-            "statusMessage": self.status_message,
-            "createdAt": self.created_at.isoformat(),
-            "lastUpdatedAt": self.updated_at.isoformat(),
-            "progress": self.progress,
-            "total": self.total,
-            "artifactDir": self.artifact_dir,
-            "runnerIdent": self.runner_ident,
+            "iacTaskId": self.task_id,
+            "iacStatus": self.status.value,
+            "iacStatusMessage": self.status_message,
+            "iacCreatedAt": self.created_at.isoformat(),
+            "iacLastUpdatedAt": self.updated_at.isoformat(),
+            "iacProgress": self.progress,
+            "iacTotal": self.total,
+            "iacArtifactDir": self.artifact_dir,
+            "iacRunnerIdent": self.runner_ident,
             "toolName": self.tool_name,
             "moduleName": self.module_name,
             "catalystCenter": self.catalyst_center,
             "result": self.result,
-            "events": self.events,
+            "iacEvents": self.events,
             "destructive": self.destructive,
         }

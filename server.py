@@ -264,7 +264,7 @@ async def _submit(
             else None
         ),
     )
-    return TaskSubmissionResponse(taskId=submission.task_id)
+    return TaskSubmissionResponse(iacTaskId=submission.task_id)
 
 
 async def _submit_module(
@@ -294,7 +294,7 @@ async def _submit_module(
             else None
         ),
     )
-    return TaskSubmissionResponse(taskId=submission.task_id)
+    return TaskSubmissionResponse(iacTaskId=submission.task_id)
 
 
 def _parse_config_json(config_json: str) -> list[dict[str, Any]]:
@@ -892,9 +892,9 @@ def create_app() -> FastAPI:
     ):
         task = await engine.get_task(task_id)
         if task is None:
-            raise HTTPException(status_code=404, detail="taskId not found")
+            raise HTTPException(status_code=404, detail="iacTaskId not found")
         if task.tenant_id != identity["tenant_id"] and identity["subject"] != "anonymous":
-            raise HTTPException(status_code=403, detail="taskId does not belong to this tenant")
+            raise HTTPException(status_code=403, detail="iacTaskId does not belong to this tenant")
         return JSONResponse(task.to_status_payload())
 
     app.mount(settings.mcp_path, mcp_app)

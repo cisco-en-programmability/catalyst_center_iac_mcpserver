@@ -22,8 +22,9 @@ def test_task_record_status_payload_shape():
 
     payload = record.to_status_payload()
 
-    assert payload["taskId"] == "task-1"
-    assert payload["status"] == "submitted"
+    assert payload["iacTaskId"] == "task-1"
+    assert payload["iacStatus"] == "submitted"
+    assert payload["iacStatusMessage"] == "Task submitted"
     assert payload["destructive"] is True
     assert payload["catalystCenter"] == "Portland"
 
@@ -127,5 +128,36 @@ def test_submit_accepts_string_state_for_gathered_tools(monkeypatch):
         )
     )
 
-    assert response.taskId == "task-123"
+    assert response.iacTaskId == "task-123"
     assert captured["state"] == "gathered"
+
+
+def test_inventory_config_tool_returns_iac_task_id(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class DummyEngine:
+        async def submit_module(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(task_id="iac-task-456")
+
+    monkeypatch.setattr(server, "engine", DummyEngine())
+
+    async def _call_tool():
+        return await server.mcp.call_tool(
+            "inventory_config",
+            {
+                "catalyst_center": "PORT",
+                "module_args_json": "{\"file_path\":\"/tmp/inventory.yml\"}",
+            },
+        )
+
+    result = asyncio.run(_call_tool())
+
+    assert result.structured_content["iacTaskId"] == "iac-task-456"
+    assert result.structured_content["iacStatus"] == "submitted"
+    assert captured["tool_name"] == "inventory_config"
+    assert captured["catalyst_center"] == "PORT"
+    assert captured["module_args"] == {
+        "file_path": "/tmp/inventory.yml",
+        "state": "gathered",
+    }

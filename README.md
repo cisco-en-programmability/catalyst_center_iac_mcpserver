@@ -902,22 +902,22 @@ curl -X POST http://127.0.0.1:8000/mcp \
 
 ### Task Polling
 
-Long operations return task IDs. Poll for completion:
+Long operations return IaC task IDs. Poll for completion:
 
 ```bash
-# Extract task ID from response
-TASK_ID="abc-123-def-456"
+# Extract IaC task ID from response
+IAC_TASK_ID="abc-123-def-456"
 
 # Poll task status
-curl http://127.0.0.1:8000/tasks/get/$TASK_ID
+curl http://127.0.0.1:8000/tasks/get/$IAC_TASK_ID
 
 # Response includes status, progress, and results
 {
-  "taskId": "abc-123-def-456",
-  "status": "completed",
-  "progress": 100,
-  "total": 100,
-  "statusMessage": "Task completed successfully",
+  "iacTaskId": "abc-123-def-456",
+  "iacStatus": "completed",
+  "iacProgress": 100,
+  "iacTotal": 100,
+  "iacStatusMessage": "Task completed successfully",
   "result": {...}
 }
 ```
@@ -951,14 +951,14 @@ Response will look like:
     "content": [
       {
         "type": "text",
-        "text": "{\"taskId\":\"abc-123-def-456\",\"status\":\"submitted\"}"
+        "text": "{\"iacTaskId\":\"abc-123-def-456\",\"iacStatus\":\"submitted\"}"
       }
     ]
   }
 }
 ```
 
-Extract the `taskId`: `abc-123-def-456`
+Extract the `iacTaskId`: `abc-123-def-456`
 
 **Step 3: Poll Task Status**
 
@@ -968,13 +968,13 @@ curl http://127.0.0.1:8000/tasks/get/abc-123-def-456
 
 **Step 4: Wait for Completion**
 
-Poll every 5-10 seconds until `status` is `completed` or `failed`:
+Poll every 5-10 seconds until `iacStatus` is `completed` or `failed`:
 
 ```bash
 # Automated polling script
-TASK_ID="abc-123-def-456"
+IAC_TASK_ID="abc-123-def-456"
 while true; do
-  STATUS=$(curl -s http://127.0.0.1:8000/tasks/get/$TASK_ID | jq -r '.status')
+  STATUS=$(curl -s http://127.0.0.1:8000/tasks/get/$IAC_TASK_ID | jq -r '.iacStatus')
   echo "Status: $STATUS"
   if [ "$STATUS" = "completed" ] || [ "$STATUS" = "failed" ]; then
     break
@@ -983,7 +983,7 @@ while true; do
 done
 
 # Get final result
-curl http://127.0.0.1:8000/tasks/get/$TASK_ID | jq .
+curl http://127.0.0.1:8000/tasks/get/$IAC_TASK_ID | jq .
 ```
 
 ---
