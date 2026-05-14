@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import textwrap
 from urllib.parse import urlparse
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import Any, Awaitable, Callable
 
 import ansible_runner
 import orjson
+import yaml
 
 from models import TaskLifecycleStatus, TaskRecord, TenantCredentials, utc_now
 from redis_store import RedisTaskStore, TaskStore
@@ -264,6 +266,14 @@ class RunnerEngine:
 
         ansible_python_interpreter = os.environ.get("ANSIBLE_PYTHON_INTERPRETER") or sys.executable
         playbook_name = "playbook.yml"
+        module_args_yaml = textwrap.indent(
+            yaml.safe_dump(
+                primary_module_args,
+                default_flow_style=False,
+                sort_keys=False,
+            ).rstrip(),
+            " " * 8,
+        )
         playbook = f"""---
 - name: Execute Catalyst Center IaC workflow
   hosts: localhost
@@ -273,7 +283,8 @@ class RunnerEngine:
     ansible_python_interpreter: "{ansible_python_interpreter}"
   tasks:
     - name: Execute workflow manager
-      {collection_namespace}.{module_name}: "{{{{ primary_module_args }}}}"
+      {collection_namespace}.{module_name}:
+{module_args_yaml}
       register: catalyst_center_result
 
     - name: Persist module result
@@ -284,13 +295,6 @@ class RunnerEngine:
 """
         (project_dir / playbook_name).write_text(playbook, encoding="utf-8")
         (inventory_dir / "hosts").write_text("localhost ansible_connection=local\n", encoding="utf-8")
-        (env_dir / "extravars").write_bytes(
-            orjson.dumps(
-                {
-                    "primary_module_args": primary_module_args,
-                }
-            )
-        )
         (env_dir / "sitecustomize.py").write_text(
             "try:\n"
             "    import catalystcentersdk.api as _api\n"
@@ -303,7 +307,6 @@ class RunnerEngine:
         (env_dir / "envvars").write_bytes(
             orjson.dumps(
                 {
-                    "ANSIBLE_STDOUT_CALLBACK": "json",
                     "ANSIBLE_RETRY_FILES_ENABLED": "false",
                     "ANSIBLE_HOST_KEY_CHECKING": "false",
                     "PYTHONUNBUFFERED": "1",

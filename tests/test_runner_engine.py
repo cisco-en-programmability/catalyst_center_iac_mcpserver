@@ -58,7 +58,10 @@ async def test_runner_files_use_cisco_catalystcenter_only(tmp_path: Path):
     assert "cisco.catalystcenter.site_workflow_manager" in playbook
     assert "cisco.dnac" not in playbook
     assert "PYTHONPATH" in envvars
+    assert "ANSIBLE_STDOUT_CALLBACK" not in envvars
     assert "CatalystCenterAPI" in sitecustomize
+    assert "state: merged" in playbook
+    assert "config_verify: true" in playbook
 
 
 @pytest.mark.asyncio
@@ -96,12 +99,27 @@ async def test_submit_module_supports_playbook_config_generator_args(tmp_path: P
     assert record.module_name == "site_playbook_config_generator"
     assert record.module_args["state"] == "gathered"
     assert "cisco.catalystcenter.site_playbook_config_generator" in playbook
+    assert "state: gathered" in playbook
+    assert "file_mode: overwrite" in playbook
+    assert "Global/USA/SAN JOSE" in playbook
 
 
 def test_resolve_credentials_uses_cluster_catalog_selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cluster_catalog = tmp_path / "clusters.yaml"
+    cluster_catalog.write_text(
+        """catalyst_centers:
+  - name: "Portland"
+    label: "DEV"
+    host: "Portland-center.domain.com"
+    version: "3.1.3.0"
+    location: "Portland"
+    enabled: true
+""",
+        encoding="utf-8",
+    )
     settings = Settings(
         runner_artifact_root=tmp_path,
-        catalyst_center_clusters_file=Path(__file__).resolve().parents[1] / "catalyst_center_clusters.yaml",
+        catalyst_center_clusters_file=cluster_catalog,
     )
     monkeypatch.setenv("CC_DEV_USERNAME", "cluster-user")
     monkeypatch.setenv("CC_DEV_PASSWORD", "cluster-pass")

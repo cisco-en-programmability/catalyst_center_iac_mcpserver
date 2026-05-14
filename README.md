@@ -25,8 +25,8 @@ python3 --version
 # Redis 6.0+
 redis-cli ping  # Should return "PONG"
 
-# Ansible Collection
-ansible-galaxy collection install cisco.catalystcenter:==2.6.0
+# Python and Ansible dependency manifests
+ls requirements.txt requirements.yml
 ```
 
 ### 2. Install
@@ -40,8 +40,13 @@ cd catalyst_center_iac_mcpserver
 python3 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install
+# Install Python dependencies
+pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
 pip install .
+
+# Install Ansible collection
+ansible-galaxy collection install -r requirements.yml
 ```
 
 ### 3. Configure
@@ -220,10 +225,11 @@ source .venv/bin/activate
 
 # Install dependencies
 pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
 pip install .
 
 # Install Ansible collection
-ansible-galaxy collection install cisco.catalystcenter:==2.6.0
+ansible-galaxy collection install -r requirements.yml
 ```
 
 #### Configure
@@ -329,8 +335,9 @@ cd /opt/catalyst-center-iac-mcp
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
 pip install .
-ansible-galaxy collection install cisco.catalystcenter:==2.6.0
+ansible-galaxy collection install -r requirements.yml
 EOSU
 ```
 
@@ -435,10 +442,11 @@ source .venv/bin/activate  # On Windows WSL2: source .venv/bin/activate
 
 # Install in development mode
 pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
 pip install -e ".[dev]"
 
 # Install Ansible collection
-ansible-galaxy collection install cisco.catalystcenter:==2.6.0
+ansible-galaxy collection install -r requirements.yml
 
 # Run tests
 python -m pytest -q
@@ -1251,4 +1259,3 @@ ansible-galaxy collection install cisco.catalystcenter:==2.6.0 --force
 ## License
 
 Cisco Sample Code License
-
