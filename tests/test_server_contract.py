@@ -100,6 +100,7 @@ def test_cluster_listing_tool_is_registered():
     names = asyncio.run(_list_names())
 
     assert "list_catalyst_centers" in names
+    assert "get_task_stdout" in names
 
 
 def test_submit_accepts_string_state_for_gathered_tools(monkeypatch):
@@ -206,3 +207,48 @@ def test_iactasks_status_endpoint_returns_iac_payload(monkeypatch):
     assert response.status_code == 200
     assert response.json()["iacTaskId"] == "iac-task-123"
     assert response.json()["iacStatus"] == "completed"
+
+
+def test_get_task_stdout_tool_returns_tail(monkeypatch, tmp_path):
+    artifact_dir = tmp_path / "iac-task-123"
+    stdout_dir = artifact_dir / "artifacts" / "iac-task-123"
+    stdout_dir.mkdir(parents=True)
+    stdout_file = stdout_dir / "stdout"
+    stdout_file.write_text("line-1\nline-2\nline-3\n", encoding="utf-8")
+
+    record = TaskRecord(
+        task_id="iac-task-123",
+        tenant_id="default",
+        catalyst_center="Portland",
+        tool_name="inventory",
+        module_name="inventory_workflow_manager",
+        status=TaskLifecycleStatus.COMPLETED,
+        status_message="Task completed successfully",
+        artifact_dir=str(artifact_dir),
+        runner_ident="iac-task-123",
+        module_args={"state": "merged"},
+    )
+
+    class DummyEngine:
+        async def get_task(self, task_id):
+            assert task_id == "iac-task-123"
+            return record
+
+    monkeypatch.setattr(server, "engine", DummyEngine())
+
+    async def _call_tool():
+        return await server.mcp.call_tool(
+            "get_task_stdout",
+            {
+                "iac_task_id": "iac-task-123",
+                "tail_lines": 2,
+            },
+        )
+
+    result = asyncio.run(_call_tool())
+
+    assert result.structured_content["iacTaskId"] == "iac-task-123"
+    assert result.structured_content["stdoutPath"] == str(stdout_file)
+    assert result.structured_content["mode"] == "tail"
+    assert result.structured_content["lineCount"] == 2
+    assert result.structured_content["stdout"] == "line-2\nline-3\n"

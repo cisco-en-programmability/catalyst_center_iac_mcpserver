@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from collections import deque
 from enum import Enum
 import json
 import os
@@ -28,6 +29,7 @@ from models import (
     NetworkSettingsRequest,
     SiteProvisionRequest,
     SiteType,
+    TaskRecord,
     TaskSubmissionResponse,
     TemplateDeployRequest,
     TemplateFailurePolicy,
@@ -651,6 +653,105 @@ async def list_configured_catalyst_centers() -> dict[str, Any]:
             }
             for cluster in CLUSTER_CATALOG.catalyst_centers
         ]
+    }
+
+
+def _task_stdout_path_candidates(record: TaskRecord) -> tuple[Path, ...]:
+    candidates: list[Path] = []
+
+    artifact_dir = Path(record.artifact_dir)
+    candidates.append(artifact_dir / "artifacts" / record.runner_ident / "stdout")
+
+    if stdout_path := (record.result or {}).get("stdout"):
+        candidates.append(Path(stdout_path))
+
+    candidates.append(
+        settings.runner_artifact_root / record.task_id / "artifacts" / record.runner_ident / "stdout"
+    )
+
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate not in seen:
+            deduped.append(candidate)
+            seen.add(candidate)
+    return tuple(deduped)
+
+
+def _resolve_task_stdout_path(record: TaskRecord) -> Path | None:
+    for candidate in _task_stdout_path_candidates(record):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _read_head_lines(path: Path, line_count: int) -> str:
+    lines: list[str] = []
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for _, line in zip(range(line_count), handle):
+            lines.append(line)
+    return "".join(lines)
+
+
+def _read_tail_lines(path: Path, line_count: int) -> str:
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        return "".join(deque(handle, maxlen=line_count))
+
+
+@mcp.tool(
+    name="get_task_stdout",
+    description=(
+        "Return ansible-runner stdout for an IaC task by resolving the artifact path from the task record. "
+        "Supports either a head-style slice or a tail-style slice."
+    ),
+    annotations=_tool_annotations(read_only=True),
+)
+async def get_task_stdout(
+    iac_task_id: str,
+    tail_lines: int | None = 100,
+    head_lines: int | None = None,
+    tenant_id: str = "default",
+) -> dict[str, Any]:
+    if head_lines is not None and tail_lines is not None:
+        raise HTTPException(status_code=400, detail="Specify either head_lines or tail_lines, not both")
+
+    line_count = head_lines if head_lines is not None else tail_lines
+    if line_count is None or line_count < 1:
+        raise HTTPException(status_code=400, detail="Requested line count must be at least 1")
+
+    record = await engine.get_task(iac_task_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="iacTaskId not found")
+    if record.tenant_id != tenant_id:
+        raise HTTPException(status_code=403, detail="iacTaskId does not belong to this tenant")
+
+    stdout_path = _resolve_task_stdout_path(record)
+    if stdout_path is None:
+        raise HTTPException(
+            status_code=404,
+            detail="stdout artifact not found for iacTaskId",
+        )
+
+    if head_lines is not None:
+        stdout = _read_head_lines(stdout_path, head_lines)
+        command = f"sed -n '1,{head_lines}p' {stdout_path}"
+        mode = "head"
+    else:
+        stdout = _read_tail_lines(stdout_path, line_count)
+        command = f"tail -{line_count} {stdout_path}"
+        mode = "tail"
+
+    return {
+        "iacTaskId": record.task_id,
+        "iacStatus": record.status.value,
+        "toolName": record.tool_name,
+        "moduleName": record.module_name,
+        "iacArtifactDir": record.artifact_dir,
+        "stdoutPath": str(stdout_path),
+        "mode": mode,
+        "lineCount": line_count,
+        "commandEquivalent": command,
+        "stdout": stdout,
     }
 
 
