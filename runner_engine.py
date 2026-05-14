@@ -269,28 +269,51 @@ class RunnerEngine:
         _walk(node)
         return discovered
 
-    def _read_generated_file(self, file_path: str) -> dict[str, Any] | None:
+    def _read_generated_file(
+        self,
+        file_path: str,
+        *,
+        artifact_dir: Path | None = None,
+    ) -> dict[str, Any] | None:
         path = Path(file_path)
-        if not path.exists() or not path.is_file():
+        candidates = [path]
+
+        if artifact_dir is not None and not path.is_absolute():
+            candidates = [
+                artifact_dir / "project" / path,
+                artifact_dir / path,
+                path,
+            ]
+
+        resolved_path = next(
+            (candidate for candidate in candidates if candidate.exists() and candidate.is_file()),
+            None,
+        )
+        if resolved_path is None:
             return None
 
-        raw = path.read_bytes()
+        raw = resolved_path.read_bytes()
         truncated = len(raw) > GENERATED_FILE_MAX_BYTES
         if truncated:
             raw = raw[:GENERATED_FILE_MAX_BYTES]
 
         return {
-            "path": str(path),
+            "path": str(resolved_path),
             "content": raw.decode("utf-8", errors="replace"),
             "contentType": "text/plain; charset=utf-8",
             "truncated": truncated,
-            "sizeBytes": path.stat().st_size,
+            "sizeBytes": resolved_path.stat().st_size,
         }
 
-    def _attach_generated_file_outputs(self, result: dict[str, Any]) -> dict[str, Any]:
+    def _attach_generated_file_outputs(
+        self,
+        result: dict[str, Any],
+        *,
+        artifact_dir: Path | None = None,
+    ) -> dict[str, Any]:
         generated_files = []
         for file_path in self._extract_result_file_paths(result):
-            generated_file = self._read_generated_file(file_path)
+            generated_file = self._read_generated_file(file_path, artifact_dir=artifact_dir)
             if generated_file is not None:
                 generated_files.append(generated_file)
 
@@ -516,7 +539,7 @@ class RunnerEngine:
         if result_path.exists():
             result = orjson.loads(result_path.read_bytes())
             if isinstance(result, dict):
-                result = self._attach_generated_file_outputs(result)
+                result = self._attach_generated_file_outputs(result, artifact_dir=artifact_dir)
         final_status = (
             TaskLifecycleStatus.COMPLETED
             if not timed_out and status == "successful" and rc == 0

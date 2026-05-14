@@ -380,8 +380,8 @@ Response:
 
 ```json
 {
-  "taskId": "abc-123",
-  "status": "submitted"
+  "iacTaskId": "abc-123",
+  "iacStatus": "submitted"
 }
 ```
 
@@ -445,14 +445,14 @@ Example response:
 
 ```json
 {
-  "taskId": "abc-123",
-  "status": "completed",
-  "statusMessage": "Workflow completed successfully",
-  "progress": 100,
-  "total": 100,
+  "iacTaskId": "abc-123",
+  "iacStatus": "completed",
+  "iacStatusMessage": "Workflow completed successfully",
+  "iacProgress": 100,
+  "iacTotal": 100,
   "toolName": "generate_site_config",
   "moduleName": "site_playbook_config_generator",
-  "artifactDir": "/var/lib/catalyst-center-iac-mcp/artifacts/abc-123",
+  "iacArtifactDir": "/var/lib/catalyst-center-iac-mcp/artifacts/abc-123",
   "result": {}
 }
 ```

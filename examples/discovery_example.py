@@ -65,7 +65,7 @@ async def discover_network_devices():
         if "result" in result and "content" in result["result"]:
             task_text = result["result"]["content"][0]["text"]
             task_data = json.loads(task_text)
-            task_id = task_data.get("iacTaskId") or task_data.get("taskId")
+            task_id = task_data.get("iacTaskId")
             
             if task_id:
                 print(f"\nPolling discovery task: {task_id}")

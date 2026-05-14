@@ -195,3 +195,36 @@ def test_attach_generated_file_outputs_reads_nested_result_file_once(tmp_path: P
     assert len(enriched["generatedFiles"]) == 1
     assert enriched["generatedFiles"][0]["path"] == str(generated)
     assert "management_ip_address" in enriched["generatedFiles"][0]["content"]
+
+
+def test_attach_generated_file_outputs_resolves_relative_path_from_artifact_project(tmp_path: Path):
+    artifact_dir = tmp_path / "artifact"
+    generated = artifact_dir / "project" / "provision.yml"
+    generated.parent.mkdir(parents=True, exist_ok=True)
+    generated.write_text("config:\n  - management_ip_address: 10.1.1.2\n", encoding="utf-8")
+
+    settings = Settings(
+        runner_artifact_root=tmp_path,
+        catalystcenter_host="https://catc.example.com",
+        catalystcenter_username="svc",
+        catalystcenter_password="secret",
+    )
+    engine = RunnerEngine(settings, store=InMemoryTaskStore())
+
+    enriched = engine._attach_generated_file_outputs(
+        {
+            "status": "success",
+            "msg": {
+                "YAML config generation Task succeeded for module 'provision_workflow_manager'.": {
+                    "file_path": "provision.yml",
+                    "devices_count": 6,
+                }
+            },
+        },
+        artifact_dir=artifact_dir,
+    )
+
+    assert "generatedFiles" in enriched
+    assert len(enriched["generatedFiles"]) == 1
+    assert enriched["generatedFiles"][0]["path"] == str(generated)
+    assert "management_ip_address" in enriched["generatedFiles"][0]["content"]

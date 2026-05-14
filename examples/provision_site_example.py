@@ -110,7 +110,7 @@ async def provision_site_hierarchy():
             # Extract iacTaskId from response
             import json
             task_data = json.loads(task_id)
-            task_id = task_data.get("iacTaskId") or task_data.get("taskId")
+            task_id = task_data.get("iacTaskId")
             
             if task_id:
                 print(f"\nPolling task status for: {task_id}")
