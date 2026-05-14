@@ -104,6 +104,38 @@ async def test_submit_module_supports_playbook_config_generator_args(tmp_path: P
     assert "Global/USA/SAN JOSE" in playbook
 
 
+@pytest.mark.asyncio
+async def test_submit_module_sets_default_catalystcenter_log_path(tmp_path: Path):
+    settings = Settings(
+        runner_artifact_root=tmp_path,
+        catalystcenter_host="https://catc.example.com",
+        catalystcenter_username="svc",
+        catalystcenter_password="secret",
+    )
+    engine = RunnerEngine(settings, store=InMemoryTaskStore())
+
+    submission = await engine.submit_module(
+        tool_name="inventory",
+        module_name="inventory_workflow_manager",
+        tenant_id="default",
+        module_args={
+            "state": "merged",
+            "config_verify": True,
+            "config": [{"inventory": [{"device_ips": ["10.10.10.1"]}]}],
+        },
+    )
+
+    record = await engine.get_task(submission.task_id)
+    playbook = next(tmp_path.glob("*/project/playbook.yml")).read_text(encoding="utf-8")
+    expected_log_path = tmp_path / submission.task_id / "catalystcenter.log"
+
+    assert record is not None
+    assert record.module_args["catalystcenter_log"] is True
+    assert record.module_args["catalystcenter_log_append"] is False
+    assert record.module_args["catalystcenter_log_file_path"] == str(expected_log_path)
+    assert str(expected_log_path) in playbook
+
+
 def test_resolve_credentials_uses_cluster_catalog_selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     cluster_catalog = tmp_path / "clusters.yaml"
     cluster_catalog.write_text(

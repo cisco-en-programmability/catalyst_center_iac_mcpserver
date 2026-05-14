@@ -685,6 +685,51 @@ def _resolve_task_stdout_path(record: TaskRecord) -> Path | None:
     return None
 
 
+def _task_sdk_log_path_candidates(record: TaskRecord) -> tuple[Path, ...]:
+    artifact_dir = Path(record.artifact_dir)
+    configured_path = (
+        record.module_args.get("catalystcenter_log_file_path")
+        or record.module_args.get("catalyst_center_log_file_path")
+        or record.module_args.get("dnac_log_file_path")
+        or "dnac.log"
+    )
+
+    raw_candidates = [Path(str(configured_path))]
+    if str(configured_path) != "catalystcenter.log":
+        raw_candidates.append(Path("catalystcenter.log"))
+    if str(configured_path) != "dnac.log":
+        raw_candidates.append(Path("dnac.log"))
+
+    candidates: list[Path] = []
+    for raw_candidate in raw_candidates:
+        if raw_candidate.is_absolute():
+            candidates.append(raw_candidate)
+            continue
+        candidates.extend(
+            [
+                artifact_dir / "project" / raw_candidate,
+                artifact_dir / raw_candidate,
+                settings.runner_artifact_root / record.task_id / "project" / raw_candidate,
+                settings.runner_artifact_root / record.task_id / raw_candidate,
+            ]
+        )
+
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate not in seen:
+            deduped.append(candidate)
+            seen.add(candidate)
+    return tuple(deduped)
+
+
+def _resolve_task_sdk_log_path(record: TaskRecord) -> Path | None:
+    for candidate in _task_sdk_log_path_candidates(record):
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _read_head_lines(path: Path, line_count: int) -> str:
     lines: list[str] = []
     with path.open("r", encoding="utf-8", errors="replace") as handle:
@@ -752,6 +797,69 @@ async def get_task_stdout(
         "lineCount": line_count,
         "commandEquivalent": command,
         "stdout": stdout,
+    }
+
+
+@mcp.tool(
+    name="get_task_log",
+    description=(
+        "Return a text log artifact for an IaC task. Supports ansible-runner stdout and the Catalyst Center SDK log "
+        "(typically dnac.log unless an explicit log path was provided to the module)."
+    ),
+    annotations=_tool_annotations(read_only=True),
+)
+async def get_task_log(
+    iac_task_id: str,
+    log_type: Literal["stdout", "catalystcenter"] = "stdout",
+    tail_lines: int | None = 100,
+    head_lines: int | None = None,
+    tenant_id: str = "default",
+) -> dict[str, Any]:
+    if head_lines is not None and tail_lines is not None:
+        raise HTTPException(status_code=400, detail="Specify either head_lines or tail_lines, not both")
+
+    line_count = head_lines if head_lines is not None else tail_lines
+    if line_count is None or line_count < 1:
+        raise HTTPException(status_code=400, detail="Requested line count must be at least 1")
+
+    record = await engine.get_task(iac_task_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="iacTaskId not found")
+    if record.tenant_id != tenant_id:
+        raise HTTPException(status_code=403, detail="iacTaskId does not belong to this tenant")
+
+    if log_type == "stdout":
+        log_path = _resolve_task_stdout_path(record)
+    else:
+        log_path = _resolve_task_sdk_log_path(record)
+
+    if log_path is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"{log_type} log artifact not found for iacTaskId",
+        )
+
+    if head_lines is not None:
+        content = _read_head_lines(log_path, head_lines)
+        command = f"sed -n '1,{head_lines}p' {log_path}"
+        mode = "head"
+    else:
+        content = _read_tail_lines(log_path, line_count)
+        command = f"tail -{line_count} {log_path}"
+        mode = "tail"
+
+    return {
+        "iacTaskId": record.task_id,
+        "iacStatus": record.status.value,
+        "toolName": record.tool_name,
+        "moduleName": record.module_name,
+        "iacArtifactDir": record.artifact_dir,
+        "logType": log_type,
+        "logPath": str(log_path),
+        "mode": mode,
+        "lineCount": line_count,
+        "commandEquivalent": command,
+        "content": content,
     }
 
 

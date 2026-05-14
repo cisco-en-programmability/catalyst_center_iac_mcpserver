@@ -101,6 +101,7 @@ def test_cluster_listing_tool_is_registered():
 
     assert "list_catalyst_centers" in names
     assert "get_task_stdout" in names
+    assert "get_task_log" in names
 
 
 def test_submit_accepts_string_state_for_gathered_tools(monkeypatch):
@@ -252,3 +253,51 @@ def test_get_task_stdout_tool_returns_tail(monkeypatch, tmp_path):
     assert result.structured_content["mode"] == "tail"
     assert result.structured_content["lineCount"] == 2
     assert result.structured_content["stdout"] == "line-2\nline-3\n"
+
+
+def test_get_task_log_tool_returns_default_dnac_log(monkeypatch, tmp_path):
+    artifact_dir = tmp_path / "iac-task-789"
+    project_dir = artifact_dir / "project"
+    project_dir.mkdir(parents=True)
+    sdk_log = project_dir / "dnac.log"
+    sdk_log.write_text("sdk-1\nsdk-2\nsdk-3\n", encoding="utf-8")
+
+    record = TaskRecord(
+        task_id="iac-task-789",
+        tenant_id="default",
+        catalyst_center="Portland",
+        tool_name="inventory",
+        module_name="inventory_workflow_manager",
+        status=TaskLifecycleStatus.COMPLETED,
+        status_message="Task completed successfully",
+        artifact_dir=str(artifact_dir),
+        runner_ident="iac-task-789",
+        module_args={"state": "merged"},
+    )
+
+    class DummyEngine:
+        async def get_task(self, task_id):
+            assert task_id == "iac-task-789"
+            return record
+
+    monkeypatch.setattr(server, "engine", DummyEngine())
+
+    async def _call_tool():
+        return await server.mcp.call_tool(
+            "get_task_log",
+            {
+                "iac_task_id": "iac-task-789",
+                "log_type": "catalystcenter",
+                "head_lines": 2,
+                "tail_lines": None,
+            },
+        )
+
+    result = asyncio.run(_call_tool())
+
+    assert result.structured_content["iacTaskId"] == "iac-task-789"
+    assert result.structured_content["logType"] == "catalystcenter"
+    assert result.structured_content["logPath"] == str(sdk_log)
+    assert result.structured_content["mode"] == "head"
+    assert result.structured_content["lineCount"] == 2
+    assert result.structured_content["content"] == "sdk-1\nsdk-2\n"

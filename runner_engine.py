@@ -141,6 +141,25 @@ class RunnerEngine:
         parsed = urlparse(host)
         return parsed.hostname or host
 
+    @staticmethod
+    def _default_catalystcenter_log_path(artifact_dir: Path) -> str:
+        return str(artifact_dir / "catalystcenter.log")
+
+    def _with_default_log_settings(
+        self,
+        module_args: dict[str, Any],
+        *,
+        artifact_dir: Path,
+    ) -> dict[str, Any]:
+        enriched = dict(module_args)
+        enriched.setdefault("catalystcenter_log", True)
+        enriched.setdefault("catalystcenter_log_append", False)
+        enriched.setdefault(
+            "catalystcenter_log_file_path",
+            self._default_catalystcenter_log_path(artifact_dir),
+        )
+        return enriched
+
     async def submit_workflow(
         self,
         *,
@@ -187,6 +206,7 @@ class RunnerEngine:
         runner_ident = task_id
         artifact_dir = self.settings.runner_artifact_root / task_id
         artifact_dir.mkdir(parents=True, exist_ok=True)
+        module_args = self._with_default_log_settings(module_args, artifact_dir=artifact_dir)
         credentials, resolved_cluster_name = self.resolve_credentials(tenant_id, catalyst_center)
         primary_module_args = {
             **module_args,
