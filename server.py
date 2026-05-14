@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import jwt
 import uvicorn
@@ -138,6 +138,12 @@ GENERIC_WORKFLOW_MODULES: tuple[str, ...] = (
 GENERIC_PLAYBOOK_GENERATOR_MODULES: tuple[str, ...] = _discover_collection_modules(
     "cisco.catalystcenter", "_playbook_config_generator"
 )
+
+WORKFLOW_STATE_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "network_devices_info_workflow_manager": ("gathered",),
+    "fabric_devices_info_workflow_manager": ("gathered",),
+    "network_compliance_workflow_manager": ("merged",),
+}
 
 class NoBufferingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -709,6 +715,58 @@ def _register_generic_workflow_tools() -> None:
             tool_name: str,
             destructive: bool,
         ):
+            state_options = WORKFLOW_STATE_OVERRIDES.get(module_name, ("merged", "deleted"))
+
+            if state_options == ("gathered",):
+                async def _generic_tool(
+                    config_json: str,
+                    state: Literal["gathered"] = "gathered",
+                    tenant_id: str = "default",
+                    catalyst_center: str | None = None,
+                    ctx: Context | None = None,
+                ) -> dict[str, Any]:
+                    assert ctx is not None
+                    config = _parse_config_json(config_json)
+                    return (
+                        await _submit(
+                            ctx=ctx,
+                            tool_name=tool_name,
+                            module_name=module_name,
+                            tenant_id=tenant_id,
+                            catalyst_center=catalyst_center,
+                            state=state,
+                            config=config,
+                            destructive=destructive,
+                        )
+                    ).model_dump()
+
+                return _generic_tool
+
+            if state_options == ("merged",):
+                async def _generic_tool(
+                    config_json: str,
+                    state: Literal["merged"] = "merged",
+                    tenant_id: str = "default",
+                    catalyst_center: str | None = None,
+                    ctx: Context | None = None,
+                ) -> dict[str, Any]:
+                    assert ctx is not None
+                    config = _parse_config_json(config_json)
+                    return (
+                        await _submit(
+                            ctx=ctx,
+                            tool_name=tool_name,
+                            module_name=module_name,
+                            tenant_id=tenant_id,
+                            catalyst_center=catalyst_center,
+                            state=state,
+                            config=config,
+                            destructive=destructive,
+                        )
+                    ).model_dump()
+
+                return _generic_tool
+
             async def _generic_tool(
                 config_json: str,
                 state: WorkflowMutationState = WorkflowMutationState.MERGED,
@@ -742,7 +800,11 @@ def _register_generic_workflow_tools() -> None:
             generic_tool,
             name=definition.tool_name,
             description=definition.description,
-            annotations=_tool_annotations(destructive=definition.destructive),
+            annotations=_tool_annotations(
+                destructive=definition.destructive,
+                read_only=definition.module_name in WORKFLOW_STATE_OVERRIDES
+                and WORKFLOW_STATE_OVERRIDES[definition.module_name] == ("gathered",),
+            ),
             meta=_catalog_meta(definition),
         )
 

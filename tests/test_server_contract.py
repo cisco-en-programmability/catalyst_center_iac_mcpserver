@@ -69,6 +69,23 @@ def test_catalog_metadata_is_attached_to_registered_tools():
         "merged",
         "deleted",
     ]
+    assert by_name["run_network_devices_info_workflow_manager"].parameters["properties"]["state"] == {
+        "const": "gathered",
+        "default": "gathered",
+        "type": "string",
+    }
+    assert by_name["run_fabric_devices_info_workflow_manager"].parameters["properties"]["state"] == {
+        "const": "gathered",
+        "default": "gathered",
+        "type": "string",
+    }
+    assert by_name["run_network_compliance_workflow_manager"].parameters["properties"]["state"] == {
+        "const": "merged",
+        "default": "merged",
+        "type": "string",
+    }
+    assert by_name["run_network_devices_info_workflow_manager"].annotations.readOnlyHint is True
+    assert by_name["run_inventory_workflow_manager"].annotations.readOnlyHint is False
 
 
 def test_cluster_listing_tool_is_registered():
