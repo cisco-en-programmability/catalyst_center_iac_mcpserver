@@ -150,6 +150,7 @@ class RunnerEngine:
         module_args: dict[str, Any],
         *,
         artifact_dir: Path,
+        catalystcenter_log_level: str | None = None,
     ) -> dict[str, Any]:
         enriched = dict(module_args)
         enriched.setdefault("catalystcenter_log", True)
@@ -158,6 +159,8 @@ class RunnerEngine:
             "catalystcenter_log_file_path",
             self._default_catalystcenter_log_path(artifact_dir),
         )
+        if catalystcenter_log_level is not None:
+            enriched.setdefault("catalystcenter_log_level", catalystcenter_log_level)
         return enriched
 
     async def submit_workflow(
@@ -172,6 +175,8 @@ class RunnerEngine:
         progress_callback: ProgressCallback | None = None,
         destructive: bool = False,
         progress_token: str | int | None = None,
+        verbosity: int | None = None,
+        catalystcenter_log_level: str | None = None,
     ) -> TaskSubmission:
         workflow_module_args = {
             "state": state,
@@ -187,6 +192,8 @@ class RunnerEngine:
             progress_callback=progress_callback,
             destructive=destructive,
             progress_token=progress_token,
+            verbosity=verbosity,
+            catalystcenter_log_level=catalystcenter_log_level,
         )
 
     async def submit_module(
@@ -200,13 +207,19 @@ class RunnerEngine:
         progress_callback: ProgressCallback | None = None,
         destructive: bool = False,
         progress_token: str | int | None = None,
+        verbosity: int | None = None,
+        catalystcenter_log_level: str | None = None,
     ) -> TaskSubmission:
         await self.connect()
         task_id = str(uuid4())
         runner_ident = task_id
         artifact_dir = self.settings.runner_artifact_root / task_id
         artifact_dir.mkdir(parents=True, exist_ok=True)
-        module_args = self._with_default_log_settings(module_args, artifact_dir=artifact_dir)
+        module_args = self._with_default_log_settings(
+            module_args,
+            artifact_dir=artifact_dir,
+            catalystcenter_log_level=catalystcenter_log_level,
+        )
         credentials, resolved_cluster_name = self.resolve_credentials(tenant_id, catalyst_center)
         primary_module_args = {
             **module_args,
@@ -247,13 +260,19 @@ class RunnerEngine:
             status=TaskLifecycleStatus.SUBMITTED,
         )
 
+        runner_kwargs: dict[str, Any] = {
+            "private_data_dir": str(artifact_dir),
+            "playbook": playbook_name,
+            "ident": runner_ident,
+            "quiet": True,
+            "event_handler": self._make_event_handler(task_id, progress_callback),
+            "status_handler": self._make_status_handler(task_id, progress_callback),
+        }
+        if verbosity is not None:
+            runner_kwargs["verbosity"] = verbosity
+
         thread, runner = ansible_runner.run_async(
-            private_data_dir=str(artifact_dir),
-            playbook=playbook_name,
-            ident=runner_ident,
-            quiet=True,
-            event_handler=self._make_event_handler(task_id, progress_callback),
-            status_handler=self._make_status_handler(task_id, progress_callback),
+            **runner_kwargs,
         )
 
         asyncio.create_task(

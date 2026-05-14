@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+import runner_engine
 from redis_store import InMemoryTaskStore
 from runner_engine import RunnerEngine
 from settings import Settings
@@ -134,6 +135,48 @@ async def test_submit_module_sets_default_catalystcenter_log_path(tmp_path: Path
     assert record.module_args["catalystcenter_log_append"] is False
     assert record.module_args["catalystcenter_log_file_path"] == str(expected_log_path)
     assert str(expected_log_path) in playbook
+
+
+@pytest.mark.asyncio
+async def test_submit_module_passes_verbosity_and_log_level(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    settings = Settings(
+        runner_artifact_root=tmp_path,
+        catalystcenter_host="https://catc.example.com",
+        catalystcenter_username="svc",
+        catalystcenter_password="secret",
+    )
+    engine = RunnerEngine(settings, store=InMemoryTaskStore())
+    captured: dict[str, object] = {}
+
+    def fake_run_async(**kwargs):
+        captured.update(kwargs)
+        return object(), object()
+
+    def fake_create_task(coro):
+        coro.close()
+        return None
+
+    monkeypatch.setattr(runner_engine.ansible_runner, "run_async", fake_run_async)
+    monkeypatch.setattr(runner_engine.asyncio, "create_task", fake_create_task)
+
+    submission = await engine.submit_module(
+        tool_name="inventory",
+        module_name="inventory_workflow_manager",
+        tenant_id="default",
+        module_args={
+            "state": "merged",
+            "config_verify": True,
+            "config": [{"inventory": [{"device_ips": ["10.10.10.1"]}]}],
+        },
+        verbosity=3,
+        catalystcenter_log_level="INFO",
+    )
+
+    record = await engine.get_task(submission.task_id)
+
+    assert captured["verbosity"] == 3
+    assert record is not None
+    assert record.module_args["catalystcenter_log_level"] == "INFO"
 
 
 def test_resolve_credentials_uses_cluster_catalog_selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

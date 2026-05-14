@@ -245,6 +245,8 @@ async def _submit(
     state: WorkflowState | WorkflowMutationState | str,
     config: list[dict[str, Any]],
     destructive: bool = False,
+    verbosity: int | None = None,
+    catalystcenter_log_level: str | None = None,
 ) -> TaskSubmissionResponse:
     async def notify(progress: float, total: float, message: str) -> None:
         await ctx.report_progress(progress, total, message)
@@ -260,6 +262,8 @@ async def _submit(
         config=config,
         progress_callback=notify,
         destructive=destructive,
+        verbosity=verbosity,
+        catalystcenter_log_level=catalystcenter_log_level,
         progress_token=(
             ctx.request_context.meta.progressToken
             if ctx.request_context and ctx.request_context.meta
@@ -278,6 +282,8 @@ async def _submit_module(
     catalyst_center: str | None,
     module_args: dict[str, Any],
     destructive: bool = False,
+    verbosity: int | None = None,
+    catalystcenter_log_level: str | None = None,
 ) -> TaskSubmissionResponse:
     async def notify(progress: float, total: float, message: str) -> None:
         await ctx.report_progress(progress, total, message)
@@ -290,6 +296,8 @@ async def _submit_module(
         module_args=module_args,
         progress_callback=notify,
         destructive=destructive,
+        verbosity=verbosity,
+        catalystcenter_log_level=catalystcenter_log_level,
         progress_token=(
             ctx.request_context.meta.progressToken
             if ctx.request_context and ctx.request_context.meta
@@ -321,6 +329,14 @@ def _parse_module_args_json(module_args_json: str) -> dict[str, Any]:
     return parsed
 
 
+def _validated_verbosity(verbosity: int | None) -> int | None:
+    if verbosity is None:
+        return None
+    if verbosity < 0:
+        raise HTTPException(status_code=400, detail="verbosity must be greater than or equal to 0")
+    return verbosity
+
+
 async def provision_site(
     site_type: SiteType,
     name: str,
@@ -328,6 +344,8 @@ async def provision_site(
     latitude: float | None = None,
     longitude: float | None = None,
     rf_model: str | None = None,
+    verbosity: int | None = None,
+    catalystcenter_log_level: str | None = None,
     tenant_id: str = "default",
     catalyst_center: str | None = None,
     ctx: Context | None = None,
@@ -350,6 +368,8 @@ async def provision_site(
         catalyst_center=catalyst_center,
         state=WorkflowState.MERGED,
         config=build_site_workflow_config(request),
+        verbosity=_validated_verbosity(verbosity),
+        catalystcenter_log_level=catalystcenter_log_level,
     )).model_dump()
 
 
@@ -357,6 +377,8 @@ async def delete_site(
     site_type: SiteType,
     name: str,
     parent_path: str,
+    verbosity: int | None = None,
+    catalystcenter_log_level: str | None = None,
     tenant_id: str = "default",
     catalyst_center: str | None = None,
     ctx: Context | None = None,
@@ -377,6 +399,8 @@ async def delete_site(
         state=WorkflowState.DELETED,
         config=build_site_workflow_config(request),
         destructive=True,
+        verbosity=_validated_verbosity(verbosity),
+        catalystcenter_log_level=catalystcenter_log_level,
     )).model_dump()
 
 
@@ -584,6 +608,8 @@ async def configure_network_settings(
     netflow_collector_port: int | None = None,
     snmp_servers: list[str] | None = None,
     syslog_servers: list[str] | None = None,
+    verbosity: int | None = None,
+    catalystcenter_log_level: str | None = None,
     tenant_id: str = "default",
     catalyst_center: str | None = None,
     ctx: Context | None = None,
@@ -609,6 +635,8 @@ async def configure_network_settings(
         catalyst_center=catalyst_center,
         state=WorkflowState.MERGED,
         config=build_network_settings_workflow_config(request),
+        verbosity=_validated_verbosity(verbosity),
+        catalystcenter_log_level=catalystcenter_log_level,
     )).model_dump()
 
 
@@ -933,6 +961,8 @@ def _register_generic_workflow_tools() -> None:
                 async def _generic_tool(
                     config_json: str,
                     state: Literal["gathered"] = "gathered",
+                    verbosity: int | None = None,
+                    catalystcenter_log_level: str | None = None,
                     tenant_id: str = "default",
                     catalyst_center: str | None = None,
                     ctx: Context | None = None,
@@ -949,6 +979,8 @@ def _register_generic_workflow_tools() -> None:
                             state=state,
                             config=config,
                             destructive=destructive,
+                            verbosity=_validated_verbosity(verbosity),
+                            catalystcenter_log_level=catalystcenter_log_level,
                         )
                     ).model_dump()
 
@@ -958,6 +990,8 @@ def _register_generic_workflow_tools() -> None:
                 async def _generic_tool(
                     config_json: str,
                     state: Literal["merged"] = "merged",
+                    verbosity: int | None = None,
+                    catalystcenter_log_level: str | None = None,
                     tenant_id: str = "default",
                     catalyst_center: str | None = None,
                     ctx: Context | None = None,
@@ -974,6 +1008,8 @@ def _register_generic_workflow_tools() -> None:
                             state=state,
                             config=config,
                             destructive=destructive,
+                            verbosity=_validated_verbosity(verbosity),
+                            catalystcenter_log_level=catalystcenter_log_level,
                         )
                     ).model_dump()
 
@@ -982,6 +1018,8 @@ def _register_generic_workflow_tools() -> None:
             async def _generic_tool(
                 config_json: str,
                 state: WorkflowMutationState = WorkflowMutationState.MERGED,
+                verbosity: int | None = None,
+                catalystcenter_log_level: str | None = None,
                 tenant_id: str = "default",
                 catalyst_center: str | None = None,
                 ctx: Context | None = None,
@@ -998,6 +1036,8 @@ def _register_generic_workflow_tools() -> None:
                         state=state,
                         config=config,
                         destructive=destructive,
+                        verbosity=_validated_verbosity(verbosity),
+                        catalystcenter_log_level=catalystcenter_log_level,
                     )
                 ).model_dump()
 
@@ -1030,6 +1070,8 @@ def _register_generic_playbook_generator_tools() -> None:
         def _make_generator_tool(module_name: str, tool_name: str):
             async def _generator_tool(
                 module_args_json: str | None = None,
+                verbosity: int | None = None,
+                catalystcenter_log_level: str | None = None,
                 tenant_id: str = "default",
                 catalyst_center: str | None = None,
                 ctx: Context | None = None,
@@ -1049,6 +1091,8 @@ def _register_generic_playbook_generator_tools() -> None:
                         tenant_id=tenant_id,
                         catalyst_center=catalyst_center,
                         module_args=module_args,
+                        verbosity=_validated_verbosity(verbosity),
+                        catalystcenter_log_level=catalystcenter_log_level,
                     )
                 ).model_dump()
 

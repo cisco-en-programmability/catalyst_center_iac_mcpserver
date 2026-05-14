@@ -88,6 +88,14 @@ def test_catalog_metadata_is_attached_to_registered_tools():
         "default": "merged",
         "type": "string",
     }
+    assert by_name["inventory"].parameters["properties"]["verbosity"] == {
+        "anyOf": [{"type": "integer"}, {"type": "null"}],
+        "default": None,
+    }
+    assert by_name["inventory"].parameters["properties"]["catalystcenter_log_level"] == {
+        "anyOf": [{"type": "string"}, {"type": "null"}],
+        "default": None,
+    }
     assert by_name["network_devices_info"].annotations.readOnlyHint is True
     assert by_name["inventory"].annotations.readOnlyHint is False
 
@@ -129,11 +137,15 @@ def test_submit_accepts_string_state_for_gathered_tools(monkeypatch):
             catalyst_center="PORT",
             state="gathered",
             config=[],
+            verbosity=3,
+            catalystcenter_log_level="INFO",
         )
     )
 
     assert response.iacTaskId == "task-123"
     assert captured["state"] == "gathered"
+    assert captured["verbosity"] == 3
+    assert captured["catalystcenter_log_level"] == "INFO"
 
 
 def test_inventory_config_tool_returns_iac_task_id(monkeypatch):
