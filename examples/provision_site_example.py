@@ -115,7 +115,7 @@ async def provision_site_hierarchy():
             if task_id:
                 print(f"\nPolling task status for: {task_id}")
                 status_response = await client.get(
-                    f"{base_url}/tasks/get/{task_id}",
+                    f"{base_url}/iactasks/get/{task_id}",
                     headers=headers
                 )
                 print(f"Task status: {status_response.json()}")

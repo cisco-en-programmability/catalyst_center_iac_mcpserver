@@ -1,6 +1,8 @@
 import asyncio
 from types import SimpleNamespace
 
+from fastapi.testclient import TestClient
+
 import server
 from models import TaskLifecycleStatus, TaskRecord
 
@@ -161,3 +163,46 @@ def test_inventory_config_tool_returns_iac_task_id(monkeypatch):
         "file_path": "/tmp/inventory.yml",
         "state": "gathered",
     }
+
+
+def test_iactasks_status_endpoint_returns_iac_payload(monkeypatch):
+    record = TaskRecord(
+        task_id="iac-task-123",
+        tenant_id="default",
+        catalyst_center="Portland",
+        tool_name="inventory_config",
+        module_name="inventory_playbook_config_generator",
+        status=TaskLifecycleStatus.COMPLETED,
+        status_message="Task completed successfully",
+        artifact_dir="/tmp/iac-task-123",
+        runner_ident="iac-task-123",
+        module_args={"state": "gathered"},
+        result={"devices": []},
+    )
+
+    class DummyEngine:
+        async def connect(self):
+            return None
+
+        async def close(self):
+            return None
+
+        async def get_task(self, task_id):
+            assert task_id == "iac-task-123"
+            return record
+
+    async def _allow_anonymous():
+        return {"tenant_id": "default", "subject": "anonymous"}
+
+    monkeypatch.setattr(server, "engine", DummyEngine())
+    server.app.dependency_overrides[server.get_identity_context] = _allow_anonymous
+
+    try:
+        with TestClient(server.app) as client:
+            response = client.get("/iactasks/get/iac-task-123")
+    finally:
+        server.app.dependency_overrides.pop(server.get_identity_context, None)
+
+    assert response.status_code == 200
+    assert response.json()["iacTaskId"] == "iac-task-123"
+    assert response.json()["iacStatus"] == "completed"

@@ -82,7 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive models with Pydantic validation
 - Task lifecycle management with progress tracking
 - Health check endpoint (`/healthz`)
-- Task status polling endpoint (`/tasks/get/{task_id}`)
+- Task status polling endpoint (`/iactasks/get/{task_id}`)
 - Docker deployment support
 - SDK compatibility shim for DNACenterAPI → CatalystCenterAPI migration
 - Unit tests for transformers and server contracts

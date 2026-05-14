@@ -138,7 +138,7 @@ If both provided, `catalyst_center` takes precedence.
 ## Architecture
 
 - `FastMCP`: MCP tool registration and request handling
-- `FastAPI`: HTTP app for `/mcp`, `/healthz`, and `/tasks/get/{task_id}`
+- `FastAPI`: HTTP app for `/mcp`, `/healthz`, and `/iactasks/get/{task_id}`
 - `ansible-runner`: the only execution path for Catalyst Center operations
 - `Redis`: task state, progress, results, and artifact indexing
 - `transformers.py`: flat tool input to nested workflow payload translation
@@ -909,7 +909,7 @@ Long operations return IaC task IDs. Poll for completion:
 IAC_TASK_ID="abc-123-def-456"
 
 # Poll task status
-curl http://127.0.0.1:8000/tasks/get/$IAC_TASK_ID
+curl http://127.0.0.1:8000/iactasks/get/$IAC_TASK_ID
 
 # Response includes status, progress, and results
 {
@@ -963,7 +963,7 @@ Extract the `iacTaskId`: `abc-123-def-456`
 **Step 3: Poll Task Status**
 
 ```bash
-curl http://127.0.0.1:8000/tasks/get/abc-123-def-456
+curl http://127.0.0.1:8000/iactasks/get/abc-123-def-456
 ```
 
 **Step 4: Wait for Completion**
@@ -974,7 +974,7 @@ Poll every 5-10 seconds until `iacStatus` is `completed` or `failed`:
 # Automated polling script
 IAC_TASK_ID="abc-123-def-456"
 while true; do
-  STATUS=$(curl -s http://127.0.0.1:8000/tasks/get/$IAC_TASK_ID | jq -r '.iacStatus')
+  STATUS=$(curl -s http://127.0.0.1:8000/iactasks/get/$IAC_TASK_ID | jq -r '.iacStatus')
   echo "Status: $STATUS"
   if [ "$STATUS" = "completed" ] || [ "$STATUS" = "failed" ]; then
     break
@@ -983,7 +983,7 @@ while true; do
 done
 
 # Get final result
-curl http://127.0.0.1:8000/tasks/get/$IAC_TASK_ID | jq .
+curl http://127.0.0.1:8000/iactasks/get/$IAC_TASK_ID | jq .
 ```
 
 ---
@@ -1243,7 +1243,7 @@ See `deploy/` directory for production configurations.
 
 - `GET /healthz` - Health check
 - `POST /mcp` - MCP protocol endpoint  
-- `GET /tasks/get/{task_id}` - Task status
+- `GET /iactasks/get/{task_id}` - Task status
 
 ## Troubleshooting
 

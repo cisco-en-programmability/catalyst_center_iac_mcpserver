@@ -74,7 +74,7 @@ async def discover_network_devices():
                 for i in range(30):
                     await asyncio.sleep(10)
                     status_response = await client.get(
-                        f"{base_url}/tasks/get/{task_id}",
+                        f"{base_url}/iactasks/get/{task_id}",
                         headers=headers
                     )
                     status = status_response.json()

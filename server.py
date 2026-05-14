@@ -885,6 +885,7 @@ def create_app() -> FastAPI:
     async def healthcheck(identity: dict[str, Any] = Depends(get_identity_context)):
         return {"status": "ok", "subject": identity["subject"]}
 
+    @app.get("/iactasks/get/{task_id}")
     @app.get("/tasks/get/{task_id}")
     async def get_task_status(
         task_id: str,

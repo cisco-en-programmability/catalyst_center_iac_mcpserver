@@ -74,7 +74,7 @@ async def configure_site_network_settings():
                 await asyncio.sleep(5)
                 
                 status_response = await client.get(
-                    f"{base_url}/tasks/get/{task_id}",
+                    f"{base_url}/iactasks/get/{task_id}",
                     headers=headers
                 )
                 status = status_response.json()

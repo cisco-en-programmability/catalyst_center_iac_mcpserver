@@ -33,7 +33,7 @@ The server keeps the AI boundary flat and predictable, then translates those fla
 - Exposes generic wrappers for all discovered `*_workflow_manager` modules
 - Exposes read-only wrappers for all discovered `*_playbook_config_generator` modules
 - Returns task IDs immediately for long-running operations
-- Supports task polling at `GET /tasks/get/{task_id}`
+- Supports task polling at `GET /iactasks/get/{task_id}`
 - Supports HTTP/SSE MCP transport
 - Supports tenant-scoped Catalyst Center credentials
 - Supports optional OAuth/JWT validation
@@ -93,7 +93,7 @@ These tools accept `module_args_json` as a JSON object string. If `state` is omi
 ## Architecture
 
 - `FastMCP`: MCP tool registration and request handling
-- `FastAPI`: HTTP app for `/mcp`, `/healthz`, and `/tasks/get/{task_id}`
+- `FastAPI`: HTTP app for `/mcp`, `/healthz`, and `/iactasks/get/{task_id}`
 - `ansible-runner`: the only execution path for Catalyst Center operations
 - `Redis`: task state, progress, results, and artifact indexing
 - `transformers.py`: flat tool input to nested workflow payload translation
@@ -438,7 +438,7 @@ result = await mcp.call_tool(
 ### Example 4: Poll Task Status Over HTTPS
 
 ```bash
-curl https://mcp.example.com/tasks/get/abc-123
+curl https://mcp.example.com/iactasks/get/abc-123
 ```
 
 Example response:
@@ -461,7 +461,7 @@ Example response:
 
 - `GET /healthz`
 - `POST /mcp`
-- `GET /tasks/get/{task_id}`
+- `GET /iactasks/get/{task_id}`
 
 ## Troubleshooting
 
