@@ -22,6 +22,7 @@ from cluster_registry import CatalystCenterClusterCatalog, load_cluster_catalog
 
 
 ProgressCallback = Callable[[float, float, str], Awaitable[None]]
+GENERATED_FILE_MAX_BYTES = 1024 * 1024
 
 
 @dataclass(slots=True)
@@ -249,6 +250,55 @@ class RunnerEngine:
     async def get_task(self, task_id: str) -> TaskRecord | None:
         return await self.store.get_task(task_id)
 
+    def _extract_result_file_paths(self, node: Any) -> list[str]:
+        discovered: list[str] = []
+        seen: set[str] = set()
+
+        def _walk(value: Any) -> None:
+            if isinstance(value, dict):
+                file_path = value.get("file_path")
+                if isinstance(file_path, str) and file_path not in seen:
+                    seen.add(file_path)
+                    discovered.append(file_path)
+                for child in value.values():
+                    _walk(child)
+            elif isinstance(value, list):
+                for item in value:
+                    _walk(item)
+
+        _walk(node)
+        return discovered
+
+    def _read_generated_file(self, file_path: str) -> dict[str, Any] | None:
+        path = Path(file_path)
+        if not path.exists() or not path.is_file():
+            return None
+
+        raw = path.read_bytes()
+        truncated = len(raw) > GENERATED_FILE_MAX_BYTES
+        if truncated:
+            raw = raw[:GENERATED_FILE_MAX_BYTES]
+
+        return {
+            "path": str(path),
+            "content": raw.decode("utf-8", errors="replace"),
+            "contentType": "text/plain; charset=utf-8",
+            "truncated": truncated,
+            "sizeBytes": path.stat().st_size,
+        }
+
+    def _attach_generated_file_outputs(self, result: dict[str, Any]) -> dict[str, Any]:
+        generated_files = []
+        for file_path in self._extract_result_file_paths(result):
+            generated_file = self._read_generated_file(file_path)
+            if generated_file is not None:
+                generated_files.append(generated_file)
+
+        if generated_files:
+            result = dict(result)
+            result["generatedFiles"] = generated_files
+        return result
+
     def _write_runner_files(
         self,
         *,
@@ -465,6 +515,8 @@ class RunnerEngine:
         result: dict[str, Any] | None = None
         if result_path.exists():
             result = orjson.loads(result_path.read_bytes())
+            if isinstance(result, dict):
+                result = self._attach_generated_file_outputs(result)
         final_status = (
             TaskLifecycleStatus.COMPLETED
             if not timed_out and status == "successful" and rc == 0

@@ -132,3 +132,66 @@ def test_resolve_credentials_uses_cluster_catalog_selection(tmp_path: Path, monk
     assert credentials.username == "cluster-user"
     assert credentials.password == "cluster-pass"
     assert credentials.version == "3.1.3.0"
+
+
+def test_attach_generated_file_outputs_reads_direct_result_file(tmp_path: Path):
+    generated = tmp_path / "site.yml"
+    generated.write_text("config:\n  - type: floor\n", encoding="utf-8")
+
+    settings = Settings(
+        runner_artifact_root=tmp_path,
+        catalystcenter_host="https://catc.example.com",
+        catalystcenter_username="svc",
+        catalystcenter_password="secret",
+    )
+    engine = RunnerEngine(settings, store=InMemoryTaskStore())
+
+    enriched = engine._attach_generated_file_outputs(
+        {
+            "status": "success",
+            "response": {
+                "file_path": str(generated),
+                "message": "generated",
+            },
+        }
+    )
+
+    assert "generatedFiles" in enriched
+    assert len(enriched["generatedFiles"]) == 1
+    assert enriched["generatedFiles"][0]["path"] == str(generated)
+    assert enriched["generatedFiles"][0]["content"] == "config:\n  - type: floor\n"
+    assert enriched["generatedFiles"][0]["truncated"] is False
+
+
+def test_attach_generated_file_outputs_reads_nested_result_file_once(tmp_path: Path):
+    generated = tmp_path / "provision.yml"
+    generated.write_text("config:\n  - management_ip_address: 10.1.1.1\n", encoding="utf-8")
+
+    settings = Settings(
+        runner_artifact_root=tmp_path,
+        catalystcenter_host="https://catc.example.com",
+        catalystcenter_username="svc",
+        catalystcenter_password="secret",
+    )
+    engine = RunnerEngine(settings, store=InMemoryTaskStore())
+
+    enriched = engine._attach_generated_file_outputs(
+        {
+            "status": "success",
+            "msg": {
+                "YAML config generation Task succeeded for module 'provision_workflow_manager'.": {
+                    "file_path": str(generated),
+                    "devices_count": 6,
+                }
+            },
+            "response": {
+                "file_path": str(generated),
+                "status": "success",
+            },
+        }
+    )
+
+    assert "generatedFiles" in enriched
+    assert len(enriched["generatedFiles"]) == 1
+    assert enriched["generatedFiles"][0]["path"] == str(generated)
+    assert "management_ip_address" in enriched["generatedFiles"][0]["content"]
