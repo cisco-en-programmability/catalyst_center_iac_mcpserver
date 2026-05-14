@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from enum import Enum
 import json
 import os
 from pathlib import Path
@@ -239,19 +240,21 @@ async def _submit(
     module_name: str,
     tenant_id: str,
     catalyst_center: str | None,
-    state: WorkflowState,
+    state: WorkflowState | WorkflowMutationState | str,
     config: list[dict[str, Any]],
     destructive: bool = False,
 ) -> TaskSubmissionResponse:
     async def notify(progress: float, total: float, message: str) -> None:
         await ctx.report_progress(progress, total, message)
 
+    state_value = state.value if isinstance(state, Enum) else state
+
     submission = await engine.submit_workflow(
         tool_name=tool_name,
         module_name=module_name,
         tenant_id=tenant_id,
         catalyst_center=catalyst_center,
-        state=state.value,
+        state=state_value,
         config=config,
         progress_callback=notify,
         destructive=destructive,

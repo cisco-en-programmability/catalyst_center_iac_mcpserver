@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import server
 from models import TaskLifecycleStatus, TaskRecord
@@ -96,3 +97,35 @@ def test_cluster_listing_tool_is_registered():
     names = asyncio.run(_list_names())
 
     assert "list_catalyst_centers" in names
+
+
+def test_submit_accepts_string_state_for_gathered_tools(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class DummyEngine:
+        async def submit_workflow(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(task_id="task-123")
+
+    class DummyContext:
+        request_context = None
+
+        async def report_progress(self, progress, total, message):
+            return None
+
+    monkeypatch.setattr(server, "engine", DummyEngine())
+
+    response = asyncio.run(
+        server._submit(
+            ctx=DummyContext(),
+            tool_name="run_network_devices_info_workflow_manager",
+            module_name="network_devices_info_workflow_manager",
+            tenant_id="default",
+            catalyst_center="PORT",
+            state="gathered",
+            config=[],
+        )
+    )
+
+    assert response.taskId == "task-123"
+    assert captured["state"] == "gathered"
