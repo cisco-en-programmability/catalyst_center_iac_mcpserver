@@ -109,7 +109,7 @@ Simplified interfaces for common operations:
 
 ### Workflow Tools (39)
 
-Full control over configuration (pattern: `run_<module>_workflow_manager`):
+Full control over configuration (pattern: `<module>` without the `_workflow_manager` suffix):
 
 - Site management, ISE/AAA, templates, PnP, wireless
 - Network profiles, assurance, application policy
@@ -118,7 +118,7 @@ Full control over configuration (pattern: `run_<module>_workflow_manager`):
 
 ### Config Generators (30)
 
-Read-only tools for querying state (pattern: `generate_<domain>_config`):
+Read-only tools for querying state (pattern: `<domain>_config`):
 
 - Query current configuration without making changes
 - Default to `state: gathered` for safe operations

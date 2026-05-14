@@ -36,11 +36,11 @@ def test_all_workflow_manager_tools_are_registered():
     names = asyncio.run(_list_names())
 
     assert "provision_site" in names
-    assert "run_site_workflow_manager" in names
-    assert "run_template_workflow_manager" in names
-    assert "run_inventory_workflow_manager" in names
-    assert "run_wireless_design_workflow_manager" in names
-    assert "run_swim_workflow_manager" in names
+    assert "site" in names
+    assert "template" in names
+    assert "inventory" in names
+    assert "wireless_design" in names
+    assert "swim" in names
 
 
 def test_playbook_config_generator_tools_are_registered_when_available():
@@ -51,9 +51,9 @@ def test_playbook_config_generator_tools_are_registered_when_available():
     names = asyncio.run(_list_names())
 
     if server.GENERIC_PLAYBOOK_GENERATOR_MODULES:
-        assert "generate_site_config" in names
-        assert "generate_inventory_config" in names
-        assert "generate_template_config" in names
+        assert "site_config" in names
+        assert "inventory_config" in names
+        assert "template_config" in names
 
 
 def test_catalog_metadata_is_attached_to_registered_tools():
@@ -65,28 +65,28 @@ def test_catalog_metadata_is_attached_to_registered_tools():
 
     assert by_name["provision_site"].meta["catalog"]["topCategory"] == "direct_tools"
     assert by_name["provision_site"].meta["catalog"]["subcategory"] == "site_management"
-    assert by_name["run_site_workflow_manager"].meta["catalog"]["workflowCategory"] == "configuration_creation"
-    assert by_name["run_inventory_workflow_manager"].parameters["properties"]["state"]["enum"] == [
+    assert by_name["site"].meta["catalog"]["workflowCategory"] == "configuration_creation"
+    assert by_name["inventory"].parameters["properties"]["state"]["enum"] == [
         "merged",
         "deleted",
     ]
-    assert by_name["run_network_devices_info_workflow_manager"].parameters["properties"]["state"] == {
+    assert by_name["network_devices_info"].parameters["properties"]["state"] == {
         "const": "gathered",
         "default": "gathered",
         "type": "string",
     }
-    assert by_name["run_fabric_devices_info_workflow_manager"].parameters["properties"]["state"] == {
+    assert by_name["fabric_devices_info"].parameters["properties"]["state"] == {
         "const": "gathered",
         "default": "gathered",
         "type": "string",
     }
-    assert by_name["run_network_compliance_workflow_manager"].parameters["properties"]["state"] == {
+    assert by_name["network_compliance"].parameters["properties"]["state"] == {
         "const": "merged",
         "default": "merged",
         "type": "string",
     }
-    assert by_name["run_network_devices_info_workflow_manager"].annotations.readOnlyHint is True
-    assert by_name["run_inventory_workflow_manager"].annotations.readOnlyHint is False
+    assert by_name["network_devices_info"].annotations.readOnlyHint is True
+    assert by_name["inventory"].annotations.readOnlyHint is False
 
 
 def test_cluster_listing_tool_is_registered():
@@ -118,7 +118,7 @@ def test_submit_accepts_string_state_for_gathered_tools(monkeypatch):
     response = asyncio.run(
         server._submit(
             ctx=DummyContext(),
-            tool_name="run_network_devices_info_workflow_manager",
+            tool_name="network_devices_info",
             module_name="network_devices_info_workflow_manager",
             tenant_id="default",
             catalyst_center="PORT",

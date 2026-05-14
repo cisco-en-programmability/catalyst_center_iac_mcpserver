@@ -119,9 +119,9 @@ class ResolvedToolDefinition:
 
 def _derive_workflow_tool_name(workflow_category: str, module_name: str) -> str:
     if workflow_category == "configuration_creation":
-        return f"run_{module_name}"
+        return module_name.removesuffix("_workflow_manager")
     base_name = module_name.removesuffix("_playbook_config_generator")
-    return f"generate_{base_name}_config"
+    return f"{base_name}_config"
 
 
 def _derive_workflow_description(workflow_category: str, module_name: str) -> str:

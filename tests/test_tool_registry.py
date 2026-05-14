@@ -29,13 +29,13 @@ def test_tool_catalog_derives_expected_tool_names():
         for definition in catalog.iter_workflow_tools("configuration_generation")
     }
 
-    assert "run_site_workflow_manager" in workflow_tool_names
-    assert "run_provision_workflow_manager" in workflow_tool_names
-    assert "run_reports_workflow_manager" in workflow_tool_names
-    assert "run_swim_workflow_manager" in workflow_tool_names
-    assert "run_lan_automation_workflow_manager" in workflow_tool_names
-    assert "run_wired_campus_automation_workflow_manager" in workflow_tool_names
-    assert "run_rma_workflow_manager" in workflow_tool_names
-    assert "generate_site_config" in generator_tool_names
-    assert "generate_inventory_config" in generator_tool_names
-    assert "generate_rma_config" in generator_tool_names
+    assert "site" in workflow_tool_names
+    assert "provision" in workflow_tool_names
+    assert "reports" in workflow_tool_names
+    assert "swim" in workflow_tool_names
+    assert "lan_automation" in workflow_tool_names
+    assert "wired_campus_automation" in workflow_tool_names
+    assert "rma" in workflow_tool_names
+    assert "site_config" in generator_tool_names
+    assert "inventory_config" in generator_tool_names
+    assert "rma_config" in generator_tool_names

@@ -25,14 +25,14 @@ The catalog supports three types of tools:
 #### **Workflow Creation Tools** (Generic)
 - Auto-registered from `*_workflow_manager` modules
 - Accept raw JSON configuration
-- Tool naming: `run_<module_name>`
-- Examples: `run_site_workflow_manager`, `run_inventory_workflow_manager`
+- Tool naming: `<module_name without _workflow_manager>`
+- Examples: `site`, `inventory`
 
 #### **Configuration Generation Tools** (Read-Only)
 - Auto-registered from `*_playbook_config_generator` modules
 - Read-only operations (state defaults to `gathered`)
-- Tool naming: `generate_<base_name>_config`
-- Examples: `generate_site_config`, `generate_inventory_config`
+- Tool naming: `<base_name>_config`
+- Examples: `site_config`, `inventory_config`
 
 ### 3. Documentation
 
@@ -151,7 +151,7 @@ workflow_tools:
         destructive: false
 ```
 
-The tool will be auto-registered as `run_your_new_workflow_manager`.
+The tool will be auto-registered as `your_new`.
 
 ### Option 3: Add a Config Generator (Read-Only)
 
@@ -162,7 +162,7 @@ workflow_tools:
       - module_name: your_new_playbook_config_generator
 ```
 
-The tool will be auto-registered as `generate_your_new_config`.
+The tool will be auto-registered as `your_new_config`.
 
 ## 🎯 Current Tool Count
 
