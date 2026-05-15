@@ -702,6 +702,53 @@ async def list_configured_catalyst_centers() -> dict[str, Any]:
     }
 
 
+async def _get_task_record_for_tenant(iac_task_id: str, tenant_id: str) -> TaskRecord:
+    record = await engine.get_task(iac_task_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="iacTaskId not found")
+    if record.tenant_id != tenant_id:
+        raise HTTPException(status_code=403, detail="iacTaskId does not belong to this tenant")
+    return record
+
+
+@mcp.tool(
+    name="get_iac_task",
+    description="Return a compact summary for an IaC task by iacTaskId.",
+    annotations=_tool_annotations(read_only=True),
+)
+async def get_iac_task(
+    iac_task_id: str,
+    tenant_id: str = "default",
+) -> dict[str, Any]:
+    record = await _get_task_record_for_tenant(iac_task_id, tenant_id)
+    return {
+        "iacTaskId": record.task_id,
+        "iacStatus": record.status.value,
+        "iacStatusMessage": record.status_message,
+        "toolName": record.tool_name,
+        "moduleName": record.module_name,
+        "catalystCenter": record.catalyst_center,
+        "iacCreatedAt": record.created_at.isoformat(),
+        "iacLastUpdatedAt": record.updated_at.isoformat(),
+        "iacProgress": record.progress,
+        "iacTotal": record.total,
+        "destructive": record.destructive,
+    }
+
+
+@mcp.tool(
+    name="get_iac_taskdetail",
+    description="Return the full stored task status payload for an IaC task by iacTaskId.",
+    annotations=_tool_annotations(read_only=True),
+)
+async def get_iac_taskdetail(
+    iac_task_id: str,
+    tenant_id: str = "default",
+) -> dict[str, Any]:
+    record = await _get_task_record_for_tenant(iac_task_id, tenant_id)
+    return record.to_status_payload()
+
+
 def _task_stdout_path_candidates(record: TaskRecord) -> tuple[Path, ...]:
     candidates: list[Path] = []
 
@@ -789,26 +836,46 @@ def _read_tail_lines(path: Path, line_count: int) -> str:
         return "".join(deque(handle, maxlen=line_count))
 
 
+DEFAULT_TASK_LOG_TAIL_LINES = 100
+
+
+def _resolve_line_window(
+    *,
+    head_lines: int | None,
+    tail_lines: int | None,
+) -> tuple[str, int]:
+    if head_lines is not None and tail_lines is not None:
+        raise HTTPException(status_code=400, detail="Specify either head_lines or tail_lines, not both")
+
+    if head_lines is not None:
+        line_count = head_lines
+        mode = "head"
+    else:
+        line_count = tail_lines if tail_lines is not None else DEFAULT_TASK_LOG_TAIL_LINES
+        mode = "tail"
+
+    if line_count < 1:
+        raise HTTPException(status_code=400, detail="Requested line count must be at least 1")
+
+    return mode, line_count
+
+
 @mcp.tool(
     name="get_task_stdout",
     description=(
         "Return ansible-runner stdout for an IaC task by resolving the artifact path from the task record. "
-        "Supports either a head-style slice or a tail-style slice."
+        "Supports either a head-style slice or a tail-style slice. "
+        "If neither head_lines nor tail_lines is provided, the server returns the last 100 lines."
     ),
     annotations=_tool_annotations(read_only=True),
 )
 async def get_task_stdout(
     iac_task_id: str,
-    tail_lines: int | None = 100,
+    tail_lines: int | None = None,
     head_lines: int | None = None,
     tenant_id: str = "default",
 ) -> dict[str, Any]:
-    if head_lines is not None and tail_lines is not None:
-        raise HTTPException(status_code=400, detail="Specify either head_lines or tail_lines, not both")
-
-    line_count = head_lines if head_lines is not None else tail_lines
-    if line_count is None or line_count < 1:
-        raise HTTPException(status_code=400, detail="Requested line count must be at least 1")
+    mode, line_count = _resolve_line_window(head_lines=head_lines, tail_lines=tail_lines)
 
     record = await engine.get_task(iac_task_id)
     if record is None:
@@ -823,14 +890,12 @@ async def get_task_stdout(
             detail="stdout artifact not found for iacTaskId",
         )
 
-    if head_lines is not None:
-        stdout = _read_head_lines(stdout_path, head_lines)
-        command = f"sed -n '1,{head_lines}p' {stdout_path}"
-        mode = "head"
+    if mode == "head":
+        stdout = _read_head_lines(stdout_path, line_count)
+        command = f"sed -n '1,{line_count}p' {stdout_path}"
     else:
         stdout = _read_tail_lines(stdout_path, line_count)
         command = f"tail -{line_count} {stdout_path}"
-        mode = "tail"
 
     return {
         "iacTaskId": record.task_id,
@@ -850,23 +915,19 @@ async def get_task_stdout(
     name="get_task_log",
     description=(
         "Return a text log artifact for an IaC task. Supports ansible-runner stdout and the Catalyst Center SDK log "
-        "(typically dnac.log unless an explicit log path was provided to the module)."
+        "(typically dnac.log unless an explicit log path was provided to the module). "
+        "If neither head_lines nor tail_lines is provided, the server returns the last 100 lines."
     ),
     annotations=_tool_annotations(read_only=True),
 )
 async def get_task_log(
     iac_task_id: str,
     log_type: Literal["stdout", "catalystcenter"] = "stdout",
-    tail_lines: int | None = 100,
+    tail_lines: int | None = None,
     head_lines: int | None = None,
     tenant_id: str = "default",
 ) -> dict[str, Any]:
-    if head_lines is not None and tail_lines is not None:
-        raise HTTPException(status_code=400, detail="Specify either head_lines or tail_lines, not both")
-
-    line_count = head_lines if head_lines is not None else tail_lines
-    if line_count is None or line_count < 1:
-        raise HTTPException(status_code=400, detail="Requested line count must be at least 1")
+    mode, line_count = _resolve_line_window(head_lines=head_lines, tail_lines=tail_lines)
 
     record = await engine.get_task(iac_task_id)
     if record is None:
@@ -885,14 +946,12 @@ async def get_task_log(
             detail=f"{log_type} log artifact not found for iacTaskId",
         )
 
-    if head_lines is not None:
-        content = _read_head_lines(log_path, head_lines)
-        command = f"sed -n '1,{head_lines}p' {log_path}"
-        mode = "head"
+    if mode == "head":
+        content = _read_head_lines(log_path, line_count)
+        command = f"sed -n '1,{line_count}p' {log_path}"
     else:
         content = _read_tail_lines(log_path, line_count)
         command = f"tail -{line_count} {log_path}"
-        mode = "tail"
 
     return {
         "iacTaskId": record.task_id,

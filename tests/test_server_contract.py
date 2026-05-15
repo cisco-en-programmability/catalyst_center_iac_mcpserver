@@ -96,6 +96,10 @@ def test_catalog_metadata_is_attached_to_registered_tools():
         "anyOf": [{"type": "string"}, {"type": "null"}],
         "default": None,
     }
+    assert by_name["get_task_stdout"].parameters["properties"]["head_lines"]["default"] is None
+    assert by_name["get_task_stdout"].parameters["properties"]["tail_lines"]["default"] is None
+    assert by_name["get_task_log"].parameters["properties"]["head_lines"]["default"] is None
+    assert by_name["get_task_log"].parameters["properties"]["tail_lines"]["default"] is None
     assert by_name["network_devices_info"].annotations.readOnlyHint is True
     assert by_name["inventory"].annotations.readOnlyHint is False
 
@@ -108,6 +112,8 @@ def test_cluster_listing_tool_is_registered():
     names = asyncio.run(_list_names())
 
     assert "list_catalyst_centers" in names
+    assert "get_iac_task" in names
+    assert "get_iac_taskdetail" in names
     assert "get_task_stdout" in names
     assert "get_task_log" in names
 
@@ -267,6 +273,140 @@ def test_get_task_stdout_tool_returns_tail(monkeypatch, tmp_path):
     assert result.structured_content["stdout"] == "line-2\nline-3\n"
 
 
+def test_get_iac_task_tools_return_summary_and_detail(monkeypatch):
+    record = TaskRecord(
+        task_id="iac-task-summary",
+        tenant_id="default",
+        catalyst_center="Portland",
+        tool_name="inventory_config",
+        module_name="inventory_playbook_config_generator",
+        status=TaskLifecycleStatus.COMPLETED,
+        status_message="Task completed successfully",
+        artifact_dir="/tmp/iac-task-summary",
+        runner_ident="iac-task-summary",
+        module_args={"state": "gathered"},
+        result={"devices": []},
+    )
+
+    class DummyEngine:
+        async def get_task(self, task_id):
+            assert task_id == "iac-task-summary"
+            return record
+
+    monkeypatch.setattr(server, "engine", DummyEngine())
+
+    async def _call_tools():
+        summary = await server.mcp.call_tool(
+            "get_iac_task",
+            {
+                "iac_task_id": "iac-task-summary",
+            },
+        )
+        detail = await server.mcp.call_tool(
+            "get_iac_taskdetail",
+            {
+                "iac_task_id": "iac-task-summary",
+            },
+        )
+        return summary, detail
+
+    summary_result, detail_result = asyncio.run(_call_tools())
+
+    assert summary_result.structured_content["iacTaskId"] == "iac-task-summary"
+    assert summary_result.structured_content["iacStatus"] == "completed"
+    assert summary_result.structured_content["toolName"] == "inventory_config"
+    assert "result" not in summary_result.structured_content
+
+    assert detail_result.structured_content["iacTaskId"] == "iac-task-summary"
+    assert detail_result.structured_content["iacStatus"] == "completed"
+    assert detail_result.structured_content["result"] == {"devices": []}
+
+
+def test_get_task_stdout_tool_head_only_does_not_require_tail_override(monkeypatch, tmp_path):
+    artifact_dir = tmp_path / "iac-task-head"
+    stdout_dir = artifact_dir / "artifacts" / "iac-task-head"
+    stdout_dir.mkdir(parents=True)
+    stdout_file = stdout_dir / "stdout"
+    stdout_file.write_text("line-1\nline-2\nline-3\n", encoding="utf-8")
+
+    record = TaskRecord(
+        task_id="iac-task-head",
+        tenant_id="default",
+        catalyst_center="Portland",
+        tool_name="inventory",
+        module_name="inventory_workflow_manager",
+        status=TaskLifecycleStatus.COMPLETED,
+        status_message="Task completed successfully",
+        artifact_dir=str(artifact_dir),
+        runner_ident="iac-task-head",
+        module_args={"state": "merged"},
+    )
+
+    class DummyEngine:
+        async def get_task(self, task_id):
+            assert task_id == "iac-task-head"
+            return record
+
+    monkeypatch.setattr(server, "engine", DummyEngine())
+
+    async def _call_tool():
+        return await server.mcp.call_tool(
+            "get_task_stdout",
+            {
+                "iac_task_id": "iac-task-head",
+                "head_lines": 2,
+            },
+        )
+
+    result = asyncio.run(_call_tool())
+
+    assert result.structured_content["mode"] == "head"
+    assert result.structured_content["lineCount"] == 2
+    assert result.structured_content["stdout"] == "line-1\nline-2\n"
+
+
+def test_get_task_stdout_tool_defaults_to_tail_100_when_no_line_window_is_provided(monkeypatch, tmp_path):
+    artifact_dir = tmp_path / "iac-task-default-tail"
+    stdout_dir = artifact_dir / "artifacts" / "iac-task-default-tail"
+    stdout_dir.mkdir(parents=True)
+    stdout_file = stdout_dir / "stdout"
+    stdout_file.write_text("line-1\nline-2\nline-3\n", encoding="utf-8")
+
+    record = TaskRecord(
+        task_id="iac-task-default-tail",
+        tenant_id="default",
+        catalyst_center="Portland",
+        tool_name="inventory",
+        module_name="inventory_workflow_manager",
+        status=TaskLifecycleStatus.COMPLETED,
+        status_message="Task completed successfully",
+        artifact_dir=str(artifact_dir),
+        runner_ident="iac-task-default-tail",
+        module_args={"state": "merged"},
+    )
+
+    class DummyEngine:
+        async def get_task(self, task_id):
+            assert task_id == "iac-task-default-tail"
+            return record
+
+    monkeypatch.setattr(server, "engine", DummyEngine())
+
+    async def _call_tool():
+        return await server.mcp.call_tool(
+            "get_task_stdout",
+            {
+                "iac_task_id": "iac-task-default-tail",
+            },
+        )
+
+    result = asyncio.run(_call_tool())
+
+    assert result.structured_content["mode"] == "tail"
+    assert result.structured_content["lineCount"] == 100
+    assert result.structured_content["stdout"] == "line-1\nline-2\nline-3\n"
+
+
 def test_get_task_log_tool_returns_default_dnac_log(monkeypatch, tmp_path):
     artifact_dir = tmp_path / "iac-task-789"
     project_dir = artifact_dir / "project"
@@ -301,7 +441,6 @@ def test_get_task_log_tool_returns_default_dnac_log(monkeypatch, tmp_path):
                 "iac_task_id": "iac-task-789",
                 "log_type": "catalystcenter",
                 "head_lines": 2,
-                "tail_lines": None,
             },
         )
 

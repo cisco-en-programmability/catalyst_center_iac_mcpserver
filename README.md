@@ -937,6 +937,33 @@ curl http://127.0.0.1:8000/iactasks/get/$IAC_TASK_ID
 }
 ```
 
+### Task Logs
+
+Use the MCP tools `get_task_stdout` and `get_task_log` to read task artifacts.
+
+- Pass `head_lines` or `tail_lines`, not both.
+- You do not need to send `tail_lines: null` when using `head_lines`.
+- If neither is provided, the server defaults internally to the last `100` lines.
+
+Examples:
+
+```json
+{
+  "iac_task_id": "abc-123-def-456",
+  "head_lines": 200
+}
+```
+
+```json
+{
+  "iac_task_id": "abc-123-def-456",
+  "log_type": "catalystcenter",
+  "tail_lines": 500
+}
+```
+
+Use `get_iac_task` for a compact task summary and `get_iac_taskdetail` for the full stored task payload, including `result`, `iacEvents`, artifact paths, and progress fields.
+
 ### Python Examples
 
 See [examples/](examples/) directory for complete Python examples:
