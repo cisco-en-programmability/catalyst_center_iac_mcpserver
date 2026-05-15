@@ -13,6 +13,7 @@ __pycache__/
 artifacts/
 build/
 /build
+*.egg-info/
 .catalyst_center_clusters.yaml
 deploy/certs/*.pem
 deploy/env/*.env
