@@ -55,10 +55,18 @@ class RunnerEngine:
         tenant_id: str,
         catalyst_center: str | None = None,
     ) -> tuple[TenantCredentials, str | None]:
-        cluster = self.cluster_catalog.resolve(catalyst_center)
-        if cluster is not None:
-            return self._resolve_cluster_credentials(cluster), cluster.name
-        return self._resolve_tenant_credentials(tenant_id), None
+        if catalyst_center:
+            cluster = self.cluster_catalog.resolve(catalyst_center)
+            if cluster is not None:
+                return self._resolve_cluster_credentials(cluster), cluster.name
+
+        try:
+            return self._resolve_tenant_credentials(tenant_id), None
+        except ValueError as tenant_error:
+            default_cluster = self.cluster_catalog.default_cluster()
+            if default_cluster is not None:
+                return self._resolve_cluster_credentials(default_cluster), default_cluster.name
+            raise tenant_error
 
     def _resolve_tenant_credentials(self, tenant_id: str) -> TenantCredentials:
         tenant_prefix = tenant_id.strip().upper().replace("-", "_")

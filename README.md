@@ -157,7 +157,7 @@ The server is stateless by design. Redis and runner artifacts hold the operation
 
 ## Multiple Catalyst Centers
 
-Use [`catalyst_center_clusters.yaml`](/Users/pawansi/.codex/worktrees/c252/catalyst_center_iac_mcp/catalyst_center_clusters.yaml) to define multiple Catalyst Center clusters that the MCP server can target by `name`, `label`, `location`, or `host`.
+Use [`catalyst_center_clusters.yaml`](/Users/pawansi/.codex/worktrees/c252/catalyst_center_iac_mcp/catalyst_center_clusters.yaml) to define multiple Catalyst Center clusters that the MCP server can target by `name`, `label`, `location`, or `host`. You can also mark exactly one enabled cluster with `default: true` so calls that omit `catalyst_center` use that cluster automatically.
 
 Example:
 
@@ -169,6 +169,7 @@ catalyst_centers:
     version: "3.1.3.0"
     location: "Portland"
     enabled: true
+    default: true
   - name: "San Jose"
     label: "produsion"
     host: "SanJose-catalyst.domain.com"
@@ -559,6 +560,8 @@ The older `CATALYSTCENTER_CLUSTER_*` variable names are still accepted for backw
 - Use `catalyst_center` when you want the model or caller to pick from a named Catalyst Center cluster inventory.
 - Use `tenant_id` when you want the legacy tenant-scoped environment variable routing.
 - If both are provided, `catalyst_center` takes precedence.
+- If `catalyst_center` is omitted, the enabled cluster marked with `default: true` is used automatically.
+- If no default is configured and there is exactly one enabled cluster, that single enabled cluster is used automatically.
 - Use `list_catalyst_centers` to inspect enabled cluster names, labels, locations, and hosts before selecting one.
 
 An example environment file is included at [catalyst-center-iac-mcp.env.example](/Users/pawansi/workspace/catalyst_center_iac_mcp/deploy/env/catalyst-center-iac-mcp.env.example).

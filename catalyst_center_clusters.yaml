@@ -5,6 +5,7 @@ catalyst_centers:
     version: "2.3.7.9"
     location: "Portland"
     enabled: true
+    default: true
   - name: "San Jose"
     label: "produsion"
     host: "10.195.243.53"

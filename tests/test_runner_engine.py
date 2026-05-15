@@ -209,6 +209,38 @@ def test_resolve_credentials_uses_cluster_catalog_selection(tmp_path: Path, monk
     assert credentials.version == "3.1.3.0"
 
 
+def test_resolve_credentials_uses_default_cluster_when_selector_is_omitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    cluster_catalog = tmp_path / "clusters.yaml"
+    cluster_catalog.write_text(
+        """catalyst_centers:
+  - name: "Portland"
+    label: "DEV"
+    host: "portland-center.domain.com"
+    version: "3.1.3.0"
+    location: "Portland"
+    enabled: true
+    default: true
+""",
+        encoding="utf-8",
+    )
+    settings = Settings(
+        runner_artifact_root=tmp_path,
+        catalyst_center_clusters_file=cluster_catalog,
+    )
+    monkeypatch.setenv("CC_DEV_USERNAME", "cluster-user")
+    monkeypatch.setenv("CC_DEV_PASSWORD", "cluster-pass")
+    engine = RunnerEngine(settings, store=InMemoryTaskStore())
+
+    credentials, cluster_name = engine.resolve_credentials("default")
+
+    assert cluster_name == "Portland"
+    assert credentials.host == "portland-center.domain.com"
+    assert credentials.username == "cluster-user"
+    assert credentials.password == "cluster-pass"
+
+
 def test_attach_generated_file_outputs_reads_direct_result_file(tmp_path: Path):
     generated = tmp_path / "site.yml"
     generated.write_text("config:\n  - type: floor\n", encoding="utf-8")

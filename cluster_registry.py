@@ -19,6 +19,7 @@ class CatalystCenterCluster(BaseModel):
     version: str
     location: str | None = None
     enabled: bool = True
+    default: bool = False
     port: int = 443
     verify_ssl: bool = True
     credential_key: str | None = None
@@ -59,14 +60,34 @@ class CatalystCenterClusterCatalog(BaseModel):
                         f"duplicate Catalyst Center selector `{selector}` for `{previous}` and `{cluster.name}`"
                     )
                 seen[selector] = cluster.name
+        default_clusters = [cluster.name for cluster in self.catalyst_centers if cluster.default]
+        if len(default_clusters) > 1:
+            raise ValueError(
+                f"multiple default Catalyst Center clusters configured: {', '.join(default_clusters)}"
+            )
+        if default_clusters:
+            default_cluster = next(cluster for cluster in self.catalyst_centers if cluster.default)
+            if not default_cluster.enabled:
+                raise ValueError(
+                    f"default Catalyst Center cluster `{default_cluster.name}` must be enabled"
+                )
         return self
 
     def enabled_clusters(self) -> list[CatalystCenterCluster]:
         return [cluster for cluster in self.catalyst_centers if cluster.enabled]
 
+    def default_cluster(self) -> CatalystCenterCluster | None:
+        for cluster in self.enabled_clusters():
+            if cluster.default:
+                return cluster
+        enabled = self.enabled_clusters()
+        if len(enabled) == 1:
+            return enabled[0]
+        return None
+
     def resolve(self, selector: str | None) -> CatalystCenterCluster | None:
         if not selector:
-            return None
+            return self.default_cluster()
         for cluster in self.enabled_clusters():
             if cluster.matches(selector):
                 return cluster
