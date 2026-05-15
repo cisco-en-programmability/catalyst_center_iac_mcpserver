@@ -352,6 +352,29 @@ def test_mcp_initialize_returns_session_id_and_tools_list_uses_it():
     assert "tools" in payload["result"]
 
 
+def test_mcp_bare_path_does_not_redirect_and_returns_session_id():
+    with TestClient(server.app) as client:
+        response = client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "pytest", "version": "1.0"},
+                },
+            },
+            headers={"Accept": "application/json, text/event-stream"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 200
+    assert "location" not in response.headers
+    assert response.headers["mcp-session-id"]
+
+
 def test_build_uvicorn_kwargs_requires_tls_when_https_only_enabled(monkeypatch):
     monkeypatch.setattr(server.settings, "https_only", True)
     monkeypatch.setattr(server.settings, "tls_certfile", None)
@@ -373,3 +396,18 @@ def test_build_uvicorn_kwargs_allows_http_when_https_only_disabled(monkeypatch):
 
     assert kwargs["ssl_certfile"] is None
     assert kwargs["ssl_keyfile"] is None
+
+
+def test_build_uvicorn_kwargs_rejects_multiworker_session_backed_http(monkeypatch):
+    monkeypatch.setattr(server.settings, "https_only", False)
+    monkeypatch.setattr(server.settings, "tls_certfile", None)
+    monkeypatch.setattr(server.settings, "tls_keyfile", None)
+    monkeypatch.setattr(server.settings, "mcp_transport", "http")
+    monkeypatch.setattr(server.settings, "mcp_stateless_http", False)
+    monkeypatch.setattr(server.settings, "server_workers", 2)
+
+    try:
+        server._build_uvicorn_kwargs()
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "SERVER_WORKERS=1" in str(exc)

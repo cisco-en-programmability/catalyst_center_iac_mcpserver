@@ -156,6 +156,24 @@ class NoBufferingMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class McpPathCanonicalizationMiddleware:
+    def __init__(self, app: Any, mcp_path: str):
+        self.app = app
+        self.bare_path = mcp_path.rstrip("/") or "/"
+        self.canonical_path = self.bare_path if self.bare_path == "/" else f"{self.bare_path}/"
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if (
+            scope["type"] == "http"
+            and self.bare_path != self.canonical_path
+            and scope.get("path") == self.bare_path
+        ):
+            scope = dict(scope)
+            scope["path"] = self.canonical_path
+            scope["raw_path"] = self.canonical_path.encode("utf-8")
+        await self.app(scope, receive, send)
+
+
 def get_identity_context(
     request: Request,
     authorization: str | None = Header(default=None),
@@ -1137,6 +1155,7 @@ def create_app() -> FastAPI:
                 yield
 
     app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=combined_lifespan)
+    app.add_middleware(McpPathCanonicalizationMiddleware, mcp_path=settings.mcp_path)
     app.add_middleware(NoBufferingMiddleware)
 
     @app.get("/healthz")
@@ -1172,6 +1191,15 @@ def _build_uvicorn_kwargs() -> dict[str, Any]:
     if settings.https_only and not (certfile and keyfile):
         raise ValueError(
             "HTTPS_ONLY is enabled but TLS_CERTFILE/TLS_KEYFILE are not configured"
+        )
+    if (
+        settings.mcp_transport == "http"
+        and not settings.mcp_stateless_http
+        and settings.server_workers != 1
+    ):
+        raise ValueError(
+            "Session-backed MCP HTTP requires SERVER_WORKERS=1. "
+            "Use MCP_STATELESS_HTTP=true or reduce SERVER_WORKERS to 1."
         )
 
     return {
