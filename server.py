@@ -1123,7 +1123,12 @@ async def lifespan(_: FastAPI):
 
 
 def create_app() -> FastAPI:
-    mcp_app = mcp.http_app(path="/", transport=settings.mcp_transport, stateless_http=True)
+    mcp_app = mcp.http_app(
+        path="/",
+        transport=settings.mcp_transport,
+        stateless_http=settings.mcp_stateless_http,
+        json_response=True,
+    )
 
     @asynccontextmanager
     async def combined_lifespan(app: FastAPI):
@@ -1158,17 +1163,33 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
+def _build_uvicorn_kwargs() -> dict[str, Any]:
+    certfile = settings.tls_certfile
+    keyfile = settings.tls_keyfile
+
+    if bool(certfile) != bool(keyfile):
+        raise ValueError("TLS_CERTFILE and TLS_KEYFILE must be set together")
+    if settings.https_only and not (certfile and keyfile):
+        raise ValueError(
+            "HTTPS_ONLY is enabled but TLS_CERTFILE/TLS_KEYFILE are not configured"
+        )
+
+    return {
+        "host": settings.server_host,
+        "port": settings.server_port,
+        "workers": settings.server_workers,
+        "proxy_headers": settings.proxy_headers,
+        "forwarded_allow_ips": settings.forwarded_allow_ips,
+        "ssl_certfile": certfile,
+        "ssl_keyfile": keyfile,
+        "ssl_ca_certs": settings.tls_ca_certs,
+    }
+
+
 def main() -> None:
     uvicorn.run(
         "server:app",
-        host=settings.server_host,
-        port=settings.server_port,
-        workers=settings.server_workers,
-        proxy_headers=settings.proxy_headers,
-        forwarded_allow_ips=settings.forwarded_allow_ips,
-        ssl_certfile=settings.tls_certfile,
-        ssl_keyfile=settings.tls_keyfile,
-        ssl_ca_certs=settings.tls_ca_certs,
+        **_build_uvicorn_kwargs(),
     )
 
 

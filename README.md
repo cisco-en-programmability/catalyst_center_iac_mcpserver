@@ -89,12 +89,21 @@ Server will be available at: `http://127.0.0.1:8000`
 
 ```bash
 # Health check
-curl http://127.0.0.1:8000/healthz
+curl -k https://127.0.0.1:8000/healthz
 
-# List available tools
-curl -X POST http://127.0.0.1:8000/mcp \
+# Initialize MCP session and capture the session ID
+SESSION_ID=$(curl -k -s -D - https://127.0.0.1:8000/mcp \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}' \
+  | awk 'BEGIN{IGNORECASE=1} /^mcp-session-id:/{print $2}' | tr -d '\r')
+
+# List available tools with the returned session ID
+curl -k -X POST https://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "mcp-session-id: ${SESSION_ID}" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 ```
 
 ## Tool Categories
@@ -483,14 +492,20 @@ SERVER_PORT=8000
 SERVER_WORKERS=2
 PROXY_HEADERS=true
 FORWARDED_ALLOW_IPS=127.0.0.1
+HTTPS_ONLY=true
 
 MCP_PATH=/mcp
 MCP_TRANSPORT=http
+MCP_STATELESS_HTTP=false
 RUNNER_TIMEOUT_SECONDS=3600
 TASK_TTL_SECONDS=86400
 TASK_POLL_INTERVAL_MS=2000
 CATALYST_CENTER_CLUSTERS_FILE=./catalyst_center_clusters.yaml
 ```
+
+`MCP_STATELESS_HTTP=false` enables session-backed HTTP and causes the server to return an `mcp-session-id` header on MCP JSON-RPC responses. Set it to `true` only if you explicitly want stateless HTTP behavior.
+
+`HTTPS_ONLY=true` is the default. The server will refuse to start unless `TLS_CERTFILE` and `TLS_KEYFILE` are configured. Set `HTTPS_ONLY=false` only for local development or when HTTP is intentionally used behind another TLS terminator.
 
 ### Direct TLS Environment Variables
 

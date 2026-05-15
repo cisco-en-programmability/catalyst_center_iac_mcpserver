@@ -7,7 +7,12 @@ __pycache__/
 *.pptx
 .DS_Store
 .env
+.env.sh
+.cleanup.sh
 /tmp/
 artifacts/
+build/
+/build
+.catalyst_center_clusters.yaml
 deploy/certs/*.pem
 deploy/env/*.env

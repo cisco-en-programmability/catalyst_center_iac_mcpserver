@@ -313,3 +313,63 @@ def test_get_task_log_tool_returns_default_dnac_log(monkeypatch, tmp_path):
     assert result.structured_content["mode"] == "head"
     assert result.structured_content["lineCount"] == 2
     assert result.structured_content["content"] == "sdk-1\nsdk-2\n"
+
+
+def test_mcp_initialize_returns_session_id_and_tools_list_uses_it():
+    with TestClient(server.app) as client:
+        initialize_response = client.post(
+            "/mcp/",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "pytest", "version": "1.0"},
+                },
+            },
+            headers={"Accept": "application/json, text/event-stream"},
+        )
+        session_id = initialize_response.headers["mcp-session-id"]
+        tools_response = client.post(
+            "/mcp/",
+            json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            headers={
+                "Accept": "application/json, text/event-stream",
+                "mcp-session-id": session_id,
+            },
+        )
+
+    assert initialize_response.status_code == 200
+    assert initialize_response.headers["content-type"].startswith("application/json")
+    assert session_id
+
+    assert tools_response.status_code == 200
+    assert tools_response.headers["content-type"].startswith("application/json")
+    payload = tools_response.json()
+    assert payload["jsonrpc"] == "2.0"
+    assert "tools" in payload["result"]
+
+
+def test_build_uvicorn_kwargs_requires_tls_when_https_only_enabled(monkeypatch):
+    monkeypatch.setattr(server.settings, "https_only", True)
+    monkeypatch.setattr(server.settings, "tls_certfile", None)
+    monkeypatch.setattr(server.settings, "tls_keyfile", None)
+
+    try:
+        server._build_uvicorn_kwargs()
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "HTTPS_ONLY" in str(exc)
+
+
+def test_build_uvicorn_kwargs_allows_http_when_https_only_disabled(monkeypatch):
+    monkeypatch.setattr(server.settings, "https_only", False)
+    monkeypatch.setattr(server.settings, "tls_certfile", None)
+    monkeypatch.setattr(server.settings, "tls_keyfile", None)
+
+    kwargs = server._build_uvicorn_kwargs()
+
+    assert kwargs["ssl_certfile"] is None
+    assert kwargs["ssl_keyfile"] is None

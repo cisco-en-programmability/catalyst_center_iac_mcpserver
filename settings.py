@@ -23,11 +23,13 @@ class Settings(BaseSettings):
     server_workers: int = 1
     proxy_headers: bool = True
     forwarded_allow_ips: str = "*"
+    https_only: bool = True
     tls_certfile: str | None = None
     tls_keyfile: str | None = None
     tls_ca_certs: str | None = None
     mcp_path: str = "/mcp"
     mcp_transport: Literal["http", "sse"] = "http"
+    mcp_stateless_http: bool = False
     redis_url: str = "redis://127.0.0.1:6379/0"
     runner_artifact_root: Path = Field(
         default_factory=lambda: Path("/tmp/catalyst_center_iac_mcp/artifacts")
