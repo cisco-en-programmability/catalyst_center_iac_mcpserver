@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     tls_ca_certs: str | None = None
     mcp_path: str = "/mcp"
     mcp_transport: Literal["http", "sse"] = "http"
-    mcp_stateless_http: bool = False
+    mcp_stateless_http: bool = True
     redis_url: str = "redis://127.0.0.1:6379/0"
     runner_artifact_root: Path = Field(
         default_factory=lambda: Path("/tmp/catalyst_center_iac_mcp/artifacts")

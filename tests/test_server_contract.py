@@ -458,8 +458,31 @@ def test_get_task_log_tool_returns_default_dnac_log(monkeypatch, tmp_path):
     assert result.structured_content["content"] == "sdk-1\nsdk-2\n"
 
 
-def test_mcp_initialize_returns_session_id_and_tools_list_uses_it():
+def test_mcp_default_http_mode_is_stateless():
+    assert server.settings.mcp_stateless_http is True
+
+
+def test_mcp_tools_list_works_in_default_stateless_mode():
     with TestClient(server.app) as client:
+        tools_response = client.post(
+            "/mcp/",
+            json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            headers={"Accept": "application/json, text/event-stream"},
+        )
+
+    assert tools_response.status_code == 200
+    assert tools_response.headers["content-type"].startswith("application/json")
+    assert "mcp-session-id" not in tools_response.headers
+    payload = tools_response.json()
+    assert payload["jsonrpc"] == "2.0"
+    assert "tools" in payload["result"]
+
+
+def test_mcp_initialize_returns_session_id_and_tools_list_uses_it_when_stateful(monkeypatch):
+    monkeypatch.setattr(server.settings, "mcp_stateless_http", False)
+    stateful_app = server.create_app()
+
+    with TestClient(stateful_app) as client:
         initialize_response = client.post(
             "/mcp/",
             json={
@@ -497,6 +520,22 @@ def test_mcp_initialize_returns_session_id_and_tools_list_uses_it():
 
 def test_mcp_bare_path_does_not_redirect_and_returns_session_id():
     with TestClient(server.app) as client:
+        response = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            headers={"Accept": "application/json, text/event-stream"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 200
+    assert "location" not in response.headers
+
+
+def test_mcp_bare_path_does_not_redirect_and_returns_session_id_when_stateful(monkeypatch):
+    monkeypatch.setattr(server.settings, "mcp_stateless_http", False)
+    stateful_app = server.create_app()
+
+    with TestClient(stateful_app) as client:
         response = client.post(
             "/mcp",
             json={

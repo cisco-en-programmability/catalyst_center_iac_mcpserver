@@ -497,14 +497,22 @@ HTTPS_ONLY=true
 
 MCP_PATH=/mcp
 MCP_TRANSPORT=http
-MCP_STATELESS_HTTP=false
+MCP_STATELESS_HTTP=true
 RUNNER_TIMEOUT_SECONDS=3600
 TASK_TTL_SECONDS=86400
 TASK_POLL_INTERVAL_MS=2000
 CATALYST_CENTER_CLUSTERS_FILE=./catalyst_center_clusters.yaml
 ```
 
-`MCP_STATELESS_HTTP=false` enables session-backed HTTP and causes the server to return an `mcp-session-id` header on MCP JSON-RPC responses. Set it to `true` only if you explicitly want stateless HTTP behavior.
+`MCP_STATELESS_HTTP=true` is the default and is the correct mode for app-level MCP server registrations, including Codex app-level MCP servers. Set it to `false` only if you explicitly want session-backed HTTP behavior and your client supports user-specific MCP sessions.
+
+If you run the server with `MCP_STATELESS_HTTP=false` and register it as an app-level MCP server, some clients may fail with errors like:
+
+```text
+Trying to create user-specific connection for app-level server
+```
+
+That happens because session-backed MCP HTTP requires a per-user session, while app-level registrations are shared and stateless by design.
 
 `HTTPS_ONLY=true` is the default. The server will refuse to start unless `TLS_CERTFILE` and `TLS_KEYFILE` are configured. Set `HTTPS_ONLY=false` only for local development or when HTTP is intentionally used behind another TLS terminator.
 
