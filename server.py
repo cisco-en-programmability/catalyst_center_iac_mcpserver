@@ -980,6 +980,11 @@ DIRECT_TOOL_DEFINITIONS: tuple[ResolvedToolDefinition, ...] = tuple(
     TOOL_CATALOG.iter_direct_tools()
 )
 
+CONFIRMATION_GUIDANCE = (
+    "Before executing this tool, first propose the planned run details to the user and obtain "
+    "explicit confirmation."
+)
+
 
 def _catalog_meta(definition: ResolvedToolDefinition) -> dict[str, Any]:
     meta: dict[str, Any] = {
@@ -993,6 +998,14 @@ def _catalog_meta(definition: ResolvedToolDefinition) -> dict[str, Any]:
     if definition.destructive:
         meta["humanInTheLoop"] = {"required": True}
     return meta
+
+
+def _tool_description_with_guidance(description: str, *, require_confirmation: bool) -> str:
+    if not require_confirmation:
+        return description
+    if CONFIRMATION_GUIDANCE in description:
+        return description
+    return f"{description.rstrip()}\n\n{CONFIRMATION_GUIDANCE}"
 
 
 def _register_direct_tools() -> None:
@@ -1012,7 +1025,10 @@ def _register_direct_tools() -> None:
         mcp.tool(
             handler,
             name=definition.tool_name,
-            description=definition.description,
+            description=_tool_description_with_guidance(
+                definition.description,
+                require_confirmation=True,
+            ),
             annotations=_tool_annotations(destructive=definition.destructive),
             meta=_catalog_meta(definition),
         )
@@ -1125,14 +1141,20 @@ def _register_generic_workflow_tools() -> None:
             definition.tool_name,
             definition.destructive,
         )
+        is_read_only = (
+            definition.module_name in WORKFLOW_STATE_OVERRIDES
+            and WORKFLOW_STATE_OVERRIDES[definition.module_name] == ("gathered",)
+        )
         mcp.tool(
             generic_tool,
             name=definition.tool_name,
-            description=definition.description,
+            description=_tool_description_with_guidance(
+                definition.description,
+                require_confirmation=not is_read_only,
+            ),
             annotations=_tool_annotations(
                 destructive=definition.destructive,
-                read_only=definition.module_name in WORKFLOW_STATE_OVERRIDES
-                and WORKFLOW_STATE_OVERRIDES[definition.module_name] == ("gathered",),
+                read_only=is_read_only,
             ),
             meta=_catalog_meta(definition),
         )

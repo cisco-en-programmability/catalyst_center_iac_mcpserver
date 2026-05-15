@@ -100,6 +100,10 @@ def test_catalog_metadata_is_attached_to_registered_tools():
     assert by_name["get_task_stdout"].parameters["properties"]["tail_lines"]["default"] is None
     assert by_name["get_task_log"].parameters["properties"]["head_lines"]["default"] is None
     assert by_name["get_task_log"].parameters["properties"]["tail_lines"]["default"] is None
+    assert server.CONFIRMATION_GUIDANCE in by_name["provision_site"].description
+    assert server.CONFIRMATION_GUIDANCE in by_name["site"].description
+    assert server.CONFIRMATION_GUIDANCE not in by_name["network_devices_info"].description
+    assert server.CONFIRMATION_GUIDANCE not in by_name["site_config"].description
     assert by_name["network_devices_info"].annotations.readOnlyHint is True
     assert by_name["inventory"].annotations.readOnlyHint is False
 
