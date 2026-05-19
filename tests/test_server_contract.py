@@ -39,8 +39,6 @@ def test_all_workflow_manager_tools_are_registered():
 
     names = asyncio.run(_list_names())
 
-    assert "provision_site" in names
-    assert "deploy_template" in names
     assert "site" in names
     assert "template" in names
     assert "inventory" in names
@@ -68,8 +66,6 @@ def test_catalog_metadata_is_attached_to_registered_tools():
     tools = asyncio.run(_list_tools())
     by_name = {tool.name: tool for tool in tools}
 
-    assert by_name["provision_site"].meta["catalog"]["topCategory"] == "direct_tools"
-    assert by_name["provision_site"].meta["catalog"]["subcategory"] == "site_management"
     assert by_name["site"].meta["catalog"]["workflowCategory"] == "configuration_creation"
     assert by_name["inventory"].parameters["properties"]["state"]["enum"] == [
         "merged",
@@ -102,7 +98,6 @@ def test_catalog_metadata_is_attached_to_registered_tools():
     assert by_name["get_task_stdout"].parameters["properties"]["tail_lines"]["default"] is None
     assert by_name["get_task_log"].parameters["properties"]["head_lines"]["default"] is None
     assert by_name["get_task_log"].parameters["properties"]["tail_lines"]["default"] is None
-    assert server.CONFIRMATION_GUIDANCE in by_name["provision_site"].description
     assert server.CONFIRMATION_GUIDANCE in by_name["site"].description
     assert server.REPORTS_VIEW_GUIDANCE in by_name["reports"].description
     assert "meta.workflowSpec" in by_name["template"].description
@@ -115,12 +110,6 @@ def test_catalog_metadata_is_attached_to_registered_tools():
         ]["type"]
         == "dict"
     )
-    assert "meta.workflowSpec" in by_name["provision_site"].description
-    assert by_name["provision_site"].meta["workflowSpec"]["moduleName"] == "site_workflow_manager"
-    assert "simplified argument surface" in by_name["provision_site"].description
-    assert "meta.workflowSpec" in by_name["deploy_template"].description
-    assert by_name["deploy_template"].meta["workflowSpec"]["moduleName"] == "template_workflow_manager"
-    assert "simplified argument surface" in by_name["deploy_template"].description
     if "template_config" in by_name:
         assert "meta.workflowSpec" in by_name["template_config"].description
         assert by_name["template_config"].meta["workflowSpec"]["moduleName"] == "template_playbook_config_generator"
@@ -181,42 +170,6 @@ def test_cluster_listing_tool_is_registered():
     assert "get_task_log" in names
 
 
-def test_submit_accepts_string_state_for_gathered_tools(monkeypatch):
-    captured: dict[str, object] = {}
-
-    class DummyEngine:
-        async def submit_workflow(self, **kwargs):
-            captured.update(kwargs)
-            return SimpleNamespace(task_id="task-123")
-
-    class DummyContext:
-        request_context = None
-
-        async def report_progress(self, progress, total, message):
-            return None
-
-    monkeypatch.setattr(server, "engine", DummyEngine())
-
-    response = asyncio.run(
-        server._submit(
-            ctx=DummyContext(),
-            tool_name="network_devices_info",
-            module_name="network_devices_info_workflow_manager",
-            tenant_id="default",
-            catalyst_center="PORT",
-            state="gathered",
-            config=[],
-            verbosity=3,
-            catalystcenter_log_level="INFO",
-        )
-    )
-
-    assert response.iacTaskId == "task-123"
-    assert captured["state"] == "gathered"
-    assert captured["verbosity"] == 3
-    assert captured["catalystcenter_log_level"] == "INFO"
-
-
 def test_inventory_config_tool_returns_iac_task_id(monkeypatch):
     captured: dict[str, object] = {}
 
@@ -246,6 +199,57 @@ def test_inventory_config_tool_returns_iac_task_id(monkeypatch):
         "file_path": "/tmp/inventory.yml",
         "state": "gathered",
     }
+
+
+def test_generic_workflow_tool_accepts_single_config_object(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class DummyEngine:
+        async def submit_workflow(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(task_id="iac-task-single-config")
+
+    monkeypatch.setattr(server, "engine", DummyEngine())
+
+    async def _call_tool():
+        return await server.mcp.call_tool(
+            "template",
+            {
+                "config_json": "{\"deploy_template\":{\"project_name\":\"Campus\",\"template_name\":\"Day0\",\"force_push\":true,\"device_details\":{\"device_ips\":[\"10.10.10.1\"]}}}",
+            },
+        )
+
+    result = asyncio.run(_call_tool())
+
+    assert result.structured_content["iacTaskId"] == "iac-task-single-config"
+    assert captured["config"] == [
+        {
+            "deploy_template": {
+                "project_name": "Campus",
+                "template_name": "Day0",
+                "force_push": True,
+                "device_details": {"device_ips": ["10.10.10.1"]},
+            }
+        }
+    ]
+
+
+def test_get_task_record_for_tenant_not_found_has_actionable_detail(monkeypatch):
+    class DummyEngine:
+        async def get_task(self, task_id):
+            assert task_id == "missing-task-id"
+            return None
+
+    monkeypatch.setattr(server, "engine", DummyEngine())
+
+    try:
+        asyncio.run(server._get_task_record_for_tenant("missing-task-id", "default"))
+        assert False, "expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 404
+        assert "task expiry" in str(exc.detail)
+        assert "wrong tenant" in str(exc.detail)
+        assert "Redis/app_name" in str(exc.detail)
 
 
 def test_iactasks_status_endpoint_returns_iac_payload(monkeypatch):

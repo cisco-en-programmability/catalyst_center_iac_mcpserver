@@ -9,7 +9,7 @@ def test_tool_catalog_loads_with_expected_top_categories():
     workflow_creation_categories = set(catalog.workflow_tools.configuration_creation)
     workflow_generation_categories = set(catalog.workflow_tools.configuration_generation)
 
-    assert "site_management" in catalog.direct_tools
+    assert catalog.direct_tools == {}
     assert "provision" in workflow_creation_categories
     assert "sd_access_fabric" in workflow_creation_categories
     assert "inventory" in workflow_generation_categories

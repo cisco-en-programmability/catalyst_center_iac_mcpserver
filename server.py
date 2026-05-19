@@ -455,8 +455,16 @@ def _parse_config_json(config_json: str) -> list[dict[str, Any]]:
         parsed = json.loads(config_json)
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail=f"config_json is not valid JSON: {exc}") from exc
+    if isinstance(parsed, dict):
+        parsed = [parsed]
     if not isinstance(parsed, list):
-        raise HTTPException(status_code=400, detail="config_json must decode to a list of workflow config objects")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "config_json must decode to a workflow config object or a list of workflow config objects. "
+                "If you provide a single object, the server can wrap it automatically; scalars and arrays of non-objects are invalid."
+            ),
+        )
     if not all(isinstance(item, dict) for item in parsed):
         raise HTTPException(status_code=400, detail="config_json must decode to a list of dictionaries")
     return parsed
@@ -994,7 +1002,14 @@ async def list_configured_catalyst_centers() -> dict[str, Any]:
 async def _get_task_record_for_tenant(iac_task_id: str, tenant_id: str) -> TaskRecord:
     record = await engine.get_task(iac_task_id)
     if record is None:
-        raise HTTPException(status_code=404, detail="iacTaskId not found")
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "iacTaskId not found. Confirm you are polling the exact task ID returned at submission time. "
+                "If the ID is correct, likely causes are task expiry from the Redis store, polling with the wrong tenant, "
+                "or submitting and polling against MCP servers that do not share the same Redis/app_name configuration."
+            ),
+        )
     if record.tenant_id != tenant_id:
         raise HTTPException(status_code=403, detail="iacTaskId does not belong to this tenant")
     return record
