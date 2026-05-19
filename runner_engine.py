@@ -297,6 +297,91 @@ class RunnerEngine:
     async def get_task(self, task_id: str) -> TaskRecord | None:
         return await self.store.get_task(task_id)
 
+    async def get_task_logs(self, task_id: str) -> dict[str, Any]:
+        """
+        Retrieve detailed logs for a task including:
+        - Ansible stdout/stderr
+        - Catalyst Center API logs  
+        - Job events
+        - Playbook execution details
+        """
+        task = await self.store.get_task(task_id)
+        if task is None:
+            return {"error": "Task not found"}
+        
+        artifact_dir = Path(task.artifact_dir)
+        logs: dict[str, Any] = {
+            "iacTaskId": task_id,
+            "status": task.status.value,
+            "toolName": task.tool_name,
+            "moduleName": task.module_name,
+            "catalystCenter": task.catalyst_center,
+            "logs": {},
+            "files": [],
+        }
+        
+        # Read Ansible stdout
+        stdout_file = artifact_dir / "artifacts" / task.runner_ident / "stdout"
+        if stdout_file.exists():
+            try:
+                logs["logs"]["ansible_stdout"] = stdout_file.read_text(encoding="utf-8", errors="replace")
+            except Exception as e:
+                logs["logs"]["ansible_stdout_error"] = str(e)
+        
+        # Read Ansible stderr  
+        stderr_file = artifact_dir / "artifacts" / task.runner_ident / "stderr"
+        if stderr_file.exists():
+            try:
+                logs["logs"]["ansible_stderr"] = stderr_file.read_text(encoding="utf-8", errors="replace")
+            except Exception as e:
+                logs["logs"]["ansible_stderr_error"] = str(e)
+        
+        # Read job events
+        job_events_file = artifact_dir / "artifacts" / task.runner_ident / "job_events"
+        if job_events_file.exists() and job_events_file.is_dir():
+            events = []
+            for event_file in sorted(job_events_file.glob("*.json")):
+                try:
+                    event_data = orjson.loads(event_file.read_bytes())
+                    events.append(event_data)
+                except Exception:
+                    pass
+            logs["logs"]["job_events"] = events
+        
+        # Read Catalyst Center logs (from ansible-runner env)
+        catalystcenter_log = artifact_dir / "artifacts" / task.runner_ident / "catalystcenter.log"
+        if catalystcenter_log.exists():
+            try:
+                logs["logs"]["catalystcenter_log"] = catalystcenter_log.read_text(encoding="utf-8", errors="replace")
+            except Exception as e:
+                logs["logs"]["catalystcenter_log_error"] = str(e)
+        
+        # Read result.json
+        result_file = artifact_dir / "project" / "result.json"
+        if result_file.exists():
+            try:
+                logs["logs"]["result"] = orjson.loads(result_file.read_bytes())
+            except Exception as e:
+                logs["logs"]["result_error"] = str(e)
+        
+        # List available artifact files
+        artifacts_dir = artifact_dir / "artifacts" / task.runner_ident
+        if artifacts_dir.exists():
+            try:
+                logs["files"] = [
+                    {
+                        "name": str(f.relative_to(artifacts_dir)),
+                        "size": f.stat().st_size,
+                        "type": "file" if f.is_file() else "directory"
+                    }
+                    for f in artifacts_dir.rglob("*")
+                    if f.is_file()
+                ]
+            except Exception as e:
+                logs["files_error"] = str(e)
+        
+        return logs
+
     def _extract_result_file_paths(self, node: Any) -> list[str]:
         discovered: list[str] = []
         seen: set[str] = set()

@@ -1618,6 +1618,28 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=403, detail="iacTaskId does not belong to this tenant")
         return JSONResponse(task.to_status_payload())
 
+    @app.get("/iactasks/get/{task_id}/logs")
+    @app.get("/tasks/get/{task_id}/logs")
+    async def get_task_logs(
+        task_id: str,
+        identity: dict[str, Any] = Depends(get_identity_context),
+    ):
+        """
+        Retrieve detailed logs for a failed IAC task including:
+        - Ansible stdout/stderr
+        - Catalyst Center API logs
+        - Job events
+        - Playbook execution details
+        """
+        task = await engine.get_task(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="iacTaskId not found")
+        if task.tenant_id != identity["tenant_id"] and identity["subject"] != "anonymous":
+            raise HTTPException(status_code=403, detail="iacTaskId does not belong to this tenant")
+        
+        logs = await engine.get_task_logs(task_id)
+        return JSONResponse(logs)
+
     app.mount(settings.mcp_path, mcp_app)
     return app
 
