@@ -25,6 +25,14 @@ direct_tools:
         Accepts flat parameters for each service and transforms them into the nested config structure.
         Simplifies bulk network configuration management compared to the generic workflow tool.
       destructive: false
+  cli_templates:
+    - handler: deploy_template
+      module_name: template_workflow_manager
+      description: |
+        Deploy a CLI template to a target device using flat MCP arguments instead of a nested workflow payload.
+        Use this tool when the goal is template deployment, parameter substitution, or force-push behavior.
+        This is the preferred interface over the generic `template` workflow tool for single-target deployments.
+      destructive: false
 
 workflow_tools:
   configuration_creation:
@@ -70,6 +78,10 @@ workflow_tools:
       - module_name: provision_workflow_manager
     reports:
       - module_name: reports_workflow_manager
+        description: |
+          Run the `reports_workflow_manager`. Pass `config_json` as a JSON list of workflow config objects.
+          For report generation, each `generate_report` item must include a non-empty `view` field.
+          Confirm the intended report `view` with the user before execution. If the view is unknown, ask the user to choose it instead of guessing.
     path_trace:
       - module_name: path_trace_workflow_manager
     sd_access_fabric:

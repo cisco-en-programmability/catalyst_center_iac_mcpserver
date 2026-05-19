@@ -46,12 +46,14 @@ def test_build_template_workflow_config_expands_flat_params():
         project_name="Campus",
         template_name="Day0",
         target_id="device-123",
+        force_push=True,
         template_params={"hostname": "edge-1", "loopback": "10.0.0.1"},
         failure_policy=TemplateFailurePolicy.ABORT_TARGET_ON_ERROR,
     )
 
     config = build_template_workflow_config(request)
 
+    assert config[0]["template_deploy"]["force_push"] is True
     assert config[0]["template_deploy"]["template_params"] == [
         {"key": "hostname", "value": "edge-1"},
         {"key": "loopback", "value": "10.0.0.1"},
@@ -102,4 +104,3 @@ def test_build_assurance_issue_workflow_config_compacts_filters():
             ]
         }
     ]
-

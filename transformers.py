@@ -59,6 +59,7 @@ def build_template_workflow_config(request: TemplateDeployRequest) -> list[dict[
                         "type": request.target_type,
                     }
                 ],
+                "force_push": request.force_push,
                 "template_params": template_params,
                 "failure_policy": request.failure_policy.value,
             }

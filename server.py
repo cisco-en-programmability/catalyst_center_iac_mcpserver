@@ -3,9 +3,12 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from collections import deque
 from enum import Enum
+from difflib import get_close_matches
+from functools import lru_cache
 import json
 import os
 from pathlib import Path
+import re
 from typing import Any, Literal
 
 import jwt
@@ -15,6 +18,7 @@ from fastapi.responses import JSONResponse
 from fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 from starlette.middleware.base import BaseHTTPMiddleware
+import yaml
 
 from models import (
     AssuranceIssuePriority,
@@ -142,11 +146,132 @@ GENERIC_PLAYBOOK_GENERATOR_MODULES: tuple[str, ...] = _discover_collection_modul
     "cisco.catalystcenter", "_playbook_config_generator"
 )
 
+_DOCUMENTATION_BLOCK_RE = re.compile(
+    r"DOCUMENTATION\s*=\s*r?([\"']{3})(?P<body>.*?)(?:\1)",
+    re.DOTALL,
+)
+
 WORKFLOW_STATE_OVERRIDES: dict[str, tuple[str, ...]] = {
     "network_devices_info_workflow_manager": ("gathered",),
     "fabric_devices_info_workflow_manager": ("gathered",),
     "network_compliance_workflow_manager": ("merged",),
 }
+
+
+def _find_collection_module_path(module_name: str) -> Path | None:
+    for modules_dir in _collection_module_dirs("cisco.catalystcenter"):
+        candidate = modules_dir / f"{module_name}.py"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+@lru_cache(maxsize=None)
+def _load_workflow_manager_documentation(module_name: str) -> dict[str, Any] | None:
+    module_path = _find_collection_module_path(module_name)
+    if module_path is None:
+        return None
+
+    text = module_path.read_text(encoding="utf-8", errors="ignore")
+    match = _DOCUMENTATION_BLOCK_RE.search(text)
+    if match is None:
+        return None
+
+    parsed = yaml.safe_load(match.group("body"))
+    if not isinstance(parsed, dict):
+        return None
+    return parsed
+
+
+def _normalize_workflow_option_schema(option_schema: dict[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    for field_name in (
+        "type",
+        "elements",
+        "required",
+        "default",
+        "choices",
+        "description",
+    ):
+        if field_name in option_schema:
+            normalized[field_name] = option_schema[field_name]
+
+    suboptions = option_schema.get("suboptions")
+    if isinstance(suboptions, dict):
+        normalized["suboptions"] = {
+            name: _normalize_workflow_option_schema(subschema)
+            for name, subschema in suboptions.items()
+            if isinstance(subschema, dict)
+        }
+    return normalized
+
+
+@lru_cache(maxsize=None)
+def _workflow_manager_tool_spec(module_name: str) -> dict[str, Any] | None:
+    documentation = _load_workflow_manager_documentation(module_name)
+    if documentation is None:
+        return None
+
+    options = documentation.get("options")
+    if not isinstance(options, dict):
+        return None
+
+    normalized_options = {
+        name: _normalize_workflow_option_schema(schema)
+        for name, schema in options.items()
+        if isinstance(schema, dict)
+    }
+    module_path = _find_collection_module_path(module_name)
+    return {
+        "moduleName": module_name,
+        "modulePath": str(module_path) if module_path is not None else None,
+        "shortDescription": documentation.get("short_description"),
+        "options": normalized_options,
+    }
+
+
+def _format_spec_line(name: str, schema: dict[str, Any], indent: int = 0) -> list[str]:
+    fragments: list[str] = []
+    if "type" in schema:
+        fragments.append(f"type={schema['type']}")
+    if "elements" in schema:
+        fragments.append(f"elements={schema['elements']}")
+    if schema.get("required") is True:
+        fragments.append("required=true")
+    if "default" in schema:
+        fragments.append(f"default={schema['default']!r}")
+    if "choices" in schema:
+        fragments.append(f"choices={schema['choices']}")
+    line = f"{'  ' * indent}- `{name}`"
+    if fragments:
+        line = f"{line}: {', '.join(fragments)}"
+    lines = [line]
+    suboptions = schema.get("suboptions")
+    if isinstance(suboptions, dict):
+        for child_name, child_schema in suboptions.items():
+            if isinstance(child_schema, dict):
+                lines.extend(_format_spec_line(child_name, child_schema, indent + 1))
+    return lines
+
+
+def _module_spec_excerpt(module_name: str) -> str | None:
+    spec = _workflow_manager_tool_spec(module_name)
+    if spec is None:
+        return None
+
+    options = spec.get("options")
+    if not isinstance(options, dict):
+        return None
+
+    lines = [
+        "Authoritative module spec (derived from the installed Ansible module):",
+        "Use the exact keys below. Do not invent aliases or inferred field names.",
+    ]
+    for option_name in ("state", "config_verify", "config"):
+        option_schema = options.get(option_name)
+        if isinstance(option_schema, dict):
+            lines.extend(_format_spec_line(option_name, option_schema))
+    return "\n".join(lines)
 
 class NoBufferingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -355,6 +480,168 @@ def _validated_verbosity(verbosity: int | None) -> int | None:
     return verbosity
 
 
+def _schema_type_matches(value: Any, expected_type: str) -> bool:
+    if expected_type == "str":
+        return isinstance(value, str)
+    if expected_type == "bool":
+        return isinstance(value, bool)
+    if expected_type == "int":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "float":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected_type == "list":
+        return isinstance(value, list)
+    if expected_type == "dict":
+        return isinstance(value, dict)
+    return True
+
+
+def _unknown_field_error(path: str, invalid_key: str, allowed_keys: list[str]) -> HTTPException:
+    detail = f"Unknown field `{invalid_key}` at `{path}`."
+    suggestion = get_close_matches(invalid_key, allowed_keys, n=1, cutoff=0.6)
+    if suggestion:
+        detail = f"{detail} Did you mean `{suggestion[0]}`?"
+    if allowed_keys:
+        detail = f"{detail} Allowed keys: {', '.join(f'`{key}`' for key in allowed_keys)}."
+    return HTTPException(status_code=400, detail=detail)
+
+
+def _validate_schema_value(path: str, value: Any, schema: dict[str, Any]) -> None:
+    expected_type = schema.get("type")
+    if isinstance(expected_type, str) and not _schema_type_matches(value, expected_type):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Field `{path}` must be of type `{expected_type}`; "
+                f"received `{type(value).__name__}`."
+            ),
+        )
+
+    choices = schema.get("choices")
+    if isinstance(choices, list):
+        if expected_type == "list" and isinstance(value, list) and schema.get("elements") != "dict":
+            invalid_items = [item for item in value if item not in choices]
+            if invalid_items:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Field `{path}` contains invalid value(s) {invalid_items!r}. "
+                        f"Allowed values: {choices!r}."
+                    ),
+                )
+        elif expected_type != "list" and value not in choices:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Field `{path}` has invalid value `{value}`. "
+                    f"Allowed values: {choices!r}."
+                ),
+            )
+
+    suboptions = schema.get("suboptions")
+    if expected_type == "dict" and isinstance(value, dict) and isinstance(suboptions, dict):
+        allowed_keys = list(suboptions.keys())
+        for key, nested_value in value.items():
+            nested_schema = suboptions.get(key)
+            if not isinstance(nested_schema, dict):
+                raise _unknown_field_error(path, key, allowed_keys)
+            _validate_schema_value(f"{path}.{key}", nested_value, nested_schema)
+        missing_required = [
+            key
+            for key, nested_schema in suboptions.items()
+            if isinstance(nested_schema, dict) and nested_schema.get("required") is True and key not in value
+        ]
+        if missing_required:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Field `{path}` is missing required key(s): "
+                    f"{', '.join(f'`{key}`' for key in missing_required)}."
+                ),
+            )
+
+    if expected_type == "list" and isinstance(value, list):
+        elements_type = schema.get("elements")
+        if elements_type == "dict":
+            item_schema = {"type": "dict", "suboptions": suboptions or {}}
+            for index, item in enumerate(value):
+                _validate_schema_value(f"{path}[{index}]", item, item_schema)
+        elif isinstance(elements_type, str):
+            item_schema = {"type": elements_type}
+            if isinstance(choices, list):
+                item_schema["choices"] = choices
+            for index, item in enumerate(value):
+                _validate_schema_value(f"{path}[{index}]", item, item_schema)
+
+
+def _validate_workflow_schema_config(module_name: str, config: list[dict[str, Any]]) -> None:
+    spec = _workflow_manager_tool_spec(module_name)
+    if spec is None:
+        return
+    options = spec.get("options")
+    if not isinstance(options, dict):
+        return
+    config_schema = options.get("config")
+    if isinstance(config_schema, dict):
+        _validate_schema_value("config", config, config_schema)
+
+
+def _validate_module_args(module_name: str, module_args: dict[str, Any]) -> None:
+    spec = _workflow_manager_tool_spec(module_name)
+    if spec is None:
+        return
+    options = spec.get("options")
+    if not isinstance(options, dict):
+        return
+
+    allowed_keys = list(options.keys())
+    for key, value in module_args.items():
+        option_schema = options.get(key)
+        if not isinstance(option_schema, dict):
+            raise _unknown_field_error("module_args", key, allowed_keys)
+        _validate_schema_value(f"module_args.{key}", value, option_schema)
+
+
+def _validate_reports_config(config: list[dict[str, Any]]) -> None:
+    for config_index, config_item in enumerate(config):
+        generate_report = config_item.get("generate_report")
+        if generate_report is None:
+            continue
+        if not isinstance(generate_report, list) or not generate_report:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The `reports` tool requires `generate_report` to be a non-empty list. "
+                    "Each `generate_report` item must include a non-empty `view` field."
+                ),
+            )
+        for report_index, report_item in enumerate(generate_report):
+            if not isinstance(report_item, dict):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "The `reports` tool requires each `generate_report` item to be an object "
+                        "with a non-empty `view` field."
+                    ),
+                )
+            view = report_item.get("view")
+            if not isinstance(view, str) or not view.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "The `reports` tool requires `generate_report[].view`. "
+                        f"Missing or empty `view` at config_json[{config_index}].generate_report[{report_index}]. "
+                        "Confirm the intended report view with the user before execution."
+                    ),
+                )
+
+
+def _validate_workflow_config(tool_name: str, module_name: str, config: list[dict[str, Any]]) -> None:
+    if tool_name == "reports" or module_name == "reports_workflow_manager":
+        _validate_reports_config(config)
+    _validate_workflow_schema_config(module_name, config)
+
+
 async def provision_site(
     site_type: SiteType,
     name: str,
@@ -427,6 +714,7 @@ async def deploy_template(
     template_name: str,
     target_id: str,
     target_type: str = "MANAGED_DEVICE_UUID",
+    force_push: bool = False,
     template_params: dict[str, str] | None = None,
     failure_policy: TemplateFailurePolicy = TemplateFailurePolicy.ABORT_TARGET_ON_ERROR,
     tenant_id: str = "default",
@@ -439,6 +727,7 @@ async def deploy_template(
         template_name=template_name,
         target_id=target_id,
         target_type=target_type,
+        force_push=force_push,
         template_params=template_params or {},
         failure_policy=failure_policy,
     )
@@ -972,6 +1261,7 @@ DIRECT_TOOL_HANDLERS: dict[str, Any] = {
     "provision_site": provision_site,
     "delete_site": delete_site,
     "configure_network_settings": configure_network_settings,
+    "deploy_template": deploy_template,
 }
 
 # Direct tool definitions are now loaded from tool_catalog.yaml
@@ -985,6 +1275,11 @@ CONFIRMATION_GUIDANCE = (
     "explicit confirmation."
 )
 
+REPORTS_VIEW_GUIDANCE = (
+    "For the `reports` tool, each `generate_report` item must include a non-empty `view` field. "
+    "If the report view is unknown, stop and ask the user to choose the view instead of guessing."
+)
+
 
 def _catalog_meta(definition: ResolvedToolDefinition) -> dict[str, Any]:
     meta: dict[str, Any] = {
@@ -995,6 +1290,9 @@ def _catalog_meta(definition: ResolvedToolDefinition) -> dict[str, Any]:
     }
     if definition.workflow_category is not None:
         meta["catalog"]["workflowCategory"] = definition.workflow_category
+    workflow_spec = _workflow_manager_tool_spec(definition.module_name)
+    if workflow_spec is not None:
+        meta["workflowSpec"] = workflow_spec
     if definition.destructive:
         meta["humanInTheLoop"] = {"required": True}
     return meta
@@ -1006,6 +1304,49 @@ def _tool_description_with_guidance(description: str, *, require_confirmation: b
     if CONFIRMATION_GUIDANCE in description:
         return description
     return f"{description.rstrip()}\n\n{CONFIRMATION_GUIDANCE}"
+
+
+def _append_module_spec_guidance(
+    description: str,
+    *,
+    module_name: str,
+    parameter_guidance: str,
+) -> str:
+    module_spec_excerpt = _module_spec_excerpt(module_name)
+    if not module_spec_excerpt:
+        return description
+    if "meta.workflowSpec" in description:
+        return description
+    return (
+        f"{description.rstrip()}\n\n"
+        "The full normalized module spec is attached in tool metadata as "
+        "`meta.workflowSpec`.\n"
+        f"{parameter_guidance}\n\n"
+        f"{module_spec_excerpt}"
+    )
+
+
+def _workflow_tool_description(
+    description: str,
+    *,
+    require_confirmation: bool,
+    tool_name: str,
+    module_name: str,
+) -> str:
+    description = _tool_description_with_guidance(
+        description,
+        require_confirmation=require_confirmation,
+    )
+    if tool_name == "reports" and REPORTS_VIEW_GUIDANCE not in description:
+        description = f"{description.rstrip()}\n\n{REPORTS_VIEW_GUIDANCE}"
+    return _append_module_spec_guidance(
+        description,
+        module_name=module_name,
+        parameter_guidance=(
+            "This wrapper still accepts the module `config` payload as JSON input, so "
+            "build that payload from `meta.workflowSpec` instead of assuming field names."
+        ),
+    )
 
 
 def _register_direct_tools() -> None:
@@ -1025,9 +1366,17 @@ def _register_direct_tools() -> None:
         mcp.tool(
             handler,
             name=definition.tool_name,
-            description=_tool_description_with_guidance(
-                definition.description,
-                require_confirmation=True,
+            description=_append_module_spec_guidance(
+                _tool_description_with_guidance(
+                    definition.description,
+                    require_confirmation=True,
+                ),
+                module_name=definition.module_name,
+                parameter_guidance=(
+                    "This direct MCP tool exposes a simplified argument surface. "
+                    "When there is any ambiguity, prefer the exact MCP parameters first, "
+                    "then consult `meta.workflowSpec` for the underlying workflow-manager shape."
+                ),
             ),
             annotations=_tool_annotations(destructive=definition.destructive),
             meta=_catalog_meta(definition),
@@ -1062,6 +1411,7 @@ def _register_generic_workflow_tools() -> None:
                 ) -> dict[str, Any]:
                     assert ctx is not None
                     config = _parse_config_json(config_json)
+                    _validate_workflow_config(tool_name, module_name, config)
                     return (
                         await _submit(
                             ctx=ctx,
@@ -1091,6 +1441,7 @@ def _register_generic_workflow_tools() -> None:
                 ) -> dict[str, Any]:
                     assert ctx is not None
                     config = _parse_config_json(config_json)
+                    _validate_workflow_config(tool_name, module_name, config)
                     return (
                         await _submit(
                             ctx=ctx,
@@ -1119,6 +1470,7 @@ def _register_generic_workflow_tools() -> None:
             ) -> dict[str, Any]:
                 assert ctx is not None
                 config = _parse_config_json(config_json)
+                _validate_workflow_config(tool_name, module_name, config)
                 return (
                     await _submit(
                         ctx=ctx,
@@ -1148,9 +1500,11 @@ def _register_generic_workflow_tools() -> None:
         mcp.tool(
             generic_tool,
             name=definition.tool_name,
-            description=_tool_description_with_guidance(
+            description=_workflow_tool_description(
                 definition.description,
                 require_confirmation=not is_read_only,
+                tool_name=definition.tool_name,
+                module_name=definition.module_name,
             ),
             annotations=_tool_annotations(
                 destructive=definition.destructive,
@@ -1182,6 +1536,7 @@ def _register_generic_playbook_generator_tools() -> None:
                     else {}
                 )
                 module_args.setdefault("state", WorkflowState.GATHERED.value)
+                _validate_module_args(module_name, module_args)
                 return (
                     await _submit_module(
                         ctx=ctx,
@@ -1201,7 +1556,14 @@ def _register_generic_playbook_generator_tools() -> None:
         mcp.tool(
             generator_tool,
             name=definition.tool_name,
-            description=definition.description,
+            description=_append_module_spec_guidance(
+                definition.description,
+                module_name=definition.module_name,
+                parameter_guidance=(
+                    "This generator wrapper accepts module arguments as JSON input, so "
+                    "build those arguments from `meta.workflowSpec` instead of assuming key names."
+                ),
+            ),
             annotations=_tool_annotations(read_only=True),
             meta=_catalog_meta(definition),
         )

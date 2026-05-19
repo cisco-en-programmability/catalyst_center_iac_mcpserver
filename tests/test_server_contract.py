@@ -1,6 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import server
@@ -39,6 +40,7 @@ def test_all_workflow_manager_tools_are_registered():
     names = asyncio.run(_list_names())
 
     assert "provision_site" in names
+    assert "deploy_template" in names
     assert "site" in names
     assert "template" in names
     assert "inventory" in names
@@ -102,10 +104,67 @@ def test_catalog_metadata_is_attached_to_registered_tools():
     assert by_name["get_task_log"].parameters["properties"]["tail_lines"]["default"] is None
     assert server.CONFIRMATION_GUIDANCE in by_name["provision_site"].description
     assert server.CONFIRMATION_GUIDANCE in by_name["site"].description
+    assert server.REPORTS_VIEW_GUIDANCE in by_name["reports"].description
+    assert "meta.workflowSpec" in by_name["template"].description
+    assert "Authoritative module spec" in by_name["template"].description
+    assert by_name["template"].meta["workflowSpec"]["moduleName"] == "template_workflow_manager"
+    assert by_name["template"].meta["workflowSpec"]["options"]["config"]["type"] == "list"
+    assert (
+        by_name["template"].meta["workflowSpec"]["options"]["config"]["suboptions"][
+            "configuration_templates"
+        ]["type"]
+        == "dict"
+    )
+    assert "meta.workflowSpec" in by_name["provision_site"].description
+    assert by_name["provision_site"].meta["workflowSpec"]["moduleName"] == "site_workflow_manager"
+    assert "simplified argument surface" in by_name["provision_site"].description
+    assert "meta.workflowSpec" in by_name["deploy_template"].description
+    assert by_name["deploy_template"].meta["workflowSpec"]["moduleName"] == "template_workflow_manager"
+    assert "simplified argument surface" in by_name["deploy_template"].description
+    if "template_config" in by_name:
+        assert "meta.workflowSpec" in by_name["template_config"].description
+        assert by_name["template_config"].meta["workflowSpec"]["moduleName"] == "template_playbook_config_generator"
     assert server.CONFIRMATION_GUIDANCE not in by_name["network_devices_info"].description
-    assert server.CONFIRMATION_GUIDANCE not in by_name["site_config"].description
+    if "site_config" in by_name:
+        assert server.CONFIRMATION_GUIDANCE not in by_name["site_config"].description
     assert by_name["network_devices_info"].annotations.readOnlyHint is True
     assert by_name["inventory"].annotations.readOnlyHint is False
+
+
+def test_reports_validation_rejects_missing_generate_report_view():
+    try:
+        server._validate_workflow_config(
+            "reports",
+            "reports_workflow_manager",
+            [{"generate_report": [{"report_name": "Daily Summary"}]}],
+        )
+        assert False, "expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert "generate_report[].view" in str(exc.detail)
+
+
+def test_template_workflow_validation_rejects_unknown_force_push_template_key():
+    try:
+        server._validate_workflow_config(
+            "template",
+            "template_workflow_manager",
+            [
+                {
+                    "deploy_template": {
+                        "project_name": "Campus",
+                        "template_name": "Day0",
+                        "force_push_template": True,
+                        "device_details": [{"device_ips": ["10.10.10.1"]}],
+                    }
+                }
+            ],
+        )
+        assert False, "expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert "force_push_template" in str(exc.detail)
+        assert "force_push" in str(exc.detail)
 
 
 def test_cluster_listing_tool_is_registered():

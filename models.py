@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def utc_now() -> datetime:
@@ -95,12 +95,15 @@ class SiteProvisionRequest(BaseModel):
 
 
 class TemplateDeployRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     project_name: str
     template_name: str
     target_id: str
     target_type: Literal["MANAGED_DEVICE_UUID", "MANAGED_DEVICE_IP", "HOSTNAME"] = (
         "MANAGED_DEVICE_UUID"
     )
+    force_push: bool = False
     template_params: dict[str, str] = Field(default_factory=dict)
     failure_policy: TemplateFailurePolicy = TemplateFailurePolicy.ABORT_TARGET_ON_ERROR
 

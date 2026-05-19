@@ -514,6 +514,8 @@ Trying to create user-specific connection for app-level server
 
 That happens because session-backed MCP HTTP requires a per-user session, while app-level registrations are shared and stateless by design.
 
+For the `reports` workflow tool, each `generate_report` entry must include a non-empty `view` field. If the report view is not known, ask the user to choose the view before executing the tool instead of guessing.
+
 `HTTPS_ONLY=true` is the default. The server will refuse to start unless `TLS_CERTFILE` and `TLS_KEYFILE` are configured. Set `HTTPS_ONLY=false` only for local development or when HTTP is intentionally used behind another TLS terminator.
 
 ### Direct TLS Environment Variables
