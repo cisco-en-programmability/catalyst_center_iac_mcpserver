@@ -11,6 +11,7 @@ from models import (
     SiteProvisionRequest,
     SiteType,
     TemplateDeployRequest,
+    WorkflowState,
 )
 
 
@@ -19,6 +20,28 @@ def _compact(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_site_workflow_config(request: SiteProvisionRequest) -> list[dict[str, Any]]:
+    configs: list[dict[str, Any]] = []
+
+    # Auto-create any intermediate parent areas so callers don't have to know the
+    # Catalyst Center site hierarchy ahead of time. site_workflow_manager is
+    # idempotent for existing areas. Skipped on DELETE to avoid touching the
+    # parent hierarchy when the user only intends to remove a leaf site.
+    if request.state == WorkflowState.MERGED:
+        segments = request.parent_path.split("/")
+        # segments[0] is the root (e.g. "Global"); create areas for segments[1:].
+        for idx in range(1, len(segments)):
+            configs.append(
+                {
+                    "type": SiteType.AREA.value,
+                    "site": {
+                        SiteType.AREA.value: {
+                            "name": segments[idx],
+                            "parent_name": "/".join(segments[:idx]),
+                        },
+                    },
+                }
+            )
+
     site_payload = {
         "name": request.name,
         "parent_name": request.parent_path,
@@ -33,14 +56,15 @@ def build_site_workflow_config(request: SiteProvisionRequest) -> list[dict[str, 
     elif request.site_type == SiteType.FLOOR:
         site_payload.update({"rf_model": request.rf_model})
 
-    return [
+    configs.append(
         {
             "type": request.site_type.value,
             "site": {
                 request.site_type.value: _compact(site_payload),
             },
         }
-    ]
+    )
+    return configs
 
 
 def build_template_workflow_config(request: TemplateDeployRequest) -> list[dict[str, Any]]:
