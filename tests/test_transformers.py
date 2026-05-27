@@ -29,12 +29,70 @@ def test_build_site_workflow_config_for_floor():
 
     assert config == [
         {
+            "type": "area",
+            "site": {"area": {"name": "USA", "parent_name": "Global"}},
+        },
+        {
+            "type": "area",
+            "site": {"area": {"name": "SJC", "parent_name": "Global/USA"}},
+        },
+        {
+            "type": "area",
+            "site": {"area": {"name": "HQ", "parent_name": "Global/USA/SJC"}},
+        },
+        {
             "type": "floor",
             "site": {
                 "floor": {
                     "name": "floor-3",
                     "parent_name": "Global/USA/SJC/HQ",
                     "rf_model": "Outdoor Open Space",
+                }
+            },
+        },
+    ]
+
+
+def test_build_site_workflow_config_no_parent_prepend_for_root_parent():
+    request = SiteProvisionRequest(
+        site_type=SiteType.AREA,
+        name="USA",
+        parent_path="Global",
+    )
+
+    config = build_site_workflow_config(request)
+
+    assert config == [
+        {
+            "type": "area",
+            "site": {"area": {"name": "USA", "parent_name": "Global"}},
+        }
+    ]
+
+
+def test_build_site_workflow_config_skips_parent_prepend_on_delete():
+    from models import WorkflowState
+
+    request = SiteProvisionRequest(
+        site_type=SiteType.BUILDING,
+        name="HQ",
+        parent_path="Global/USA/SJC",
+        latitude=37.33,
+        longitude=-121.88,
+        state=WorkflowState.DELETED,
+    )
+
+    config = build_site_workflow_config(request)
+
+    assert config == [
+        {
+            "type": "building",
+            "site": {
+                "building": {
+                    "name": "HQ",
+                    "parent_name": "Global/USA/SJC",
+                    "latitude": 37.33,
+                    "longitude": -121.88,
                 }
             },
         }
