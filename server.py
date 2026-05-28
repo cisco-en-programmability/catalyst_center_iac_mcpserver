@@ -1053,6 +1053,142 @@ async def get_iac_taskdetail(
     return record.to_status_payload()
 
 
+@mcp.tool(
+    name="wait_iac_task",
+    description=(
+        "Poll an IaC task until completion (or timeout) and return comprehensive results including "
+        "final status, Ansible stdout with play recap (ok/changed/failed counts), SDK logs, "
+        "result payload, and artifact metadata. This is the recommended way to monitor workflow executions."
+    ),
+    annotations=_tool_annotations(read_only=True),
+)
+async def wait_iac_task(
+    iac_task_id: str,
+    tenant_id: str = "default",
+    poll_interval_seconds: int = 5,
+    timeout_seconds: int = 300,
+    include_full_stdout: bool = False,
+    include_full_sdk_log: bool = False,
+) -> dict[str, Any]:
+    """
+    Poll task until completion and return comprehensive results.
+    
+    Args:
+        iac_task_id: The IAC task ID to wait for
+        tenant_id: Tenant identifier
+        poll_interval_seconds: Seconds between polls (default: 5)
+        timeout_seconds: Maximum seconds to wait (default: 300)
+        include_full_stdout: Include full Ansible stdout (default: False, returns last 100 lines)
+        include_full_sdk_log: Include full SDK log (default: False, returns last 50 lines)
+    
+    Returns:
+        Comprehensive task results including status, recap, logs, and artifacts
+    """
+    import asyncio
+    import re
+    
+    start_time = asyncio.get_event_loop().time()
+    
+    while True:
+        # Check timeout
+        elapsed = asyncio.get_event_loop().time() - start_time
+        if elapsed > timeout_seconds:
+            return {
+                "iacTaskId": iac_task_id,
+                "iacStatus": "timeout",
+                "error": f"Task did not complete within {timeout_seconds} seconds",
+                "elapsedSeconds": int(elapsed),
+            }
+        
+        # Get current task status
+        record = await _get_task_record_for_tenant(iac_task_id, tenant_id)
+        
+        # Check if task is terminal
+        if record.status in (TaskLifecycleStatus.COMPLETED, TaskLifecycleStatus.FAILED):
+            # Task is done, gather comprehensive results
+            result = {
+                "iacTaskId": record.task_id,
+                "iacStatus": record.status.value,
+                "iacStatusMessage": record.status_message,
+                "toolName": record.tool_name,
+                "moduleName": record.module_name,
+                "catalystCenter": record.catalyst_center,
+                "iacProgress": record.progress,
+                "iacTotal": record.total,
+                "iacCreatedAt": record.created_at.isoformat(),
+                "iacCompletedAt": record.updated_at.isoformat(),
+                "elapsedSeconds": int(elapsed),
+                "result": record.result,
+                "artifacts": {
+                    "artifactDir": record.artifact_dir,
+                    "runnerIdent": record.runner_ident,
+                },
+            }
+            
+            # Get Ansible stdout with play recap
+            stdout_path = _resolve_task_stdout_path(record)
+            if stdout_path and stdout_path.exists():
+                try:
+                    stdout_content = stdout_path.read_text(encoding="utf-8", errors="replace")
+                    
+                    # Extract play recap
+                    recap_match = re.search(
+                        r"PLAY RECAP \*+\s+(.*?)(?:\n\n|\Z)",
+                        stdout_content,
+                        re.DOTALL
+                    )
+                    if recap_match:
+                        result["ansibleRecap"] = recap_match.group(1).strip()
+                    
+                    # Include stdout (full or tail)
+                    if include_full_stdout:
+                        result["ansibleStdout"] = stdout_content
+                    else:
+                        lines = stdout_content.splitlines()
+                        result["ansibleStdoutTail"] = "\n".join(lines[-100:])
+                        result["ansibleStdoutLines"] = len(lines)
+                        
+                except Exception as e:
+                    result["ansibleStdoutError"] = str(e)
+            
+            # Get SDK log
+            sdk_log_path = _resolve_task_sdk_log_path(record)
+            if sdk_log_path and sdk_log_path.exists():
+                try:
+                    sdk_log_content = sdk_log_path.read_text(encoding="utf-8", errors="replace")
+                    
+                    if include_full_sdk_log:
+                        result["catalystCenterLog"] = sdk_log_content
+                    else:
+                        lines = sdk_log_content.splitlines()
+                        result["catalystCenterLogTail"] = "\n".join(lines[-50:])
+                        result["catalystCenterLogLines"] = len(lines)
+                        
+                except Exception as e:
+                    result["catalystCenterLogError"] = str(e)
+            
+            # List artifact files
+            artifact_dir = Path(record.artifact_dir)
+            artifacts_path = artifact_dir / "artifacts" / record.runner_ident
+            if artifacts_path.exists():
+                try:
+                    files = []
+                    for f in artifacts_path.rglob("*"):
+                        if f.is_file():
+                            files.append({
+                                "name": str(f.relative_to(artifacts_path)),
+                                "size": f.stat().st_size,
+                            })
+                    result["artifacts"]["files"] = files
+                except Exception as e:
+                    result["artifacts"]["filesError"] = str(e)
+            
+            return result
+        
+        # Task still running, wait and poll again
+        await asyncio.sleep(poll_interval_seconds)
+
+
 def _task_stdout_path_candidates(record: TaskRecord) -> tuple[Path, ...]:
     candidates: list[Path] = []
 

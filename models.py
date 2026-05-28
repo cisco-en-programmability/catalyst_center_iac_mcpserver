@@ -175,6 +175,12 @@ class NetworkSettingsRequest(BaseModel):
 class TaskSubmissionResponse(BaseModel):
     iacTaskId: str
     iacStatus: Literal["submitted"] = "submitted"
+    nextActions: dict[str, str] = Field(default_factory=lambda: {
+        "poll_status": "Use get_iac_task tool with this iacTaskId to check progress",
+        "wait_completion": "Use wait_iac_task tool to poll until completion and get final results",
+        "get_stdout": "Use get_task_stdout tool to see Ansible execution output",
+        "get_logs": "Use get_task_log tool to see Catalyst Center SDK logs",
+    })
 
 
 class TaskRecord(BaseModel):
