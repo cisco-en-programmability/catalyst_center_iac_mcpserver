@@ -450,24 +450,50 @@ async def _submit_module(
     return TaskSubmissionResponse(iacTaskId=submission.task_id)
 
 
-def _parse_config_json(config_json: str) -> list[dict[str, Any]]:
+def _parse_config_json(config_json: str, module_name: str | None = None) -> list[dict[str, Any]] | dict[str, Any]:
+    """
+    Parse config_json and return appropriate type based on module requirements.
+    
+    Most workflow managers expect config: list[dict], but some require config: dict.
+    This function handles both cases based on the module_name.
+    """
+    # Modules that require config as dict instead of list
+    DICT_CONFIG_MODULES = {
+        "user_role_workflow_manager",
+        "user_role_playbook_config_generator",
+    }
+    
     try:
         parsed = json.loads(config_json)
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail=f"config_json is not valid JSON: {exc}") from exc
-    if isinstance(parsed, dict):
-        parsed = [parsed]
-    if not isinstance(parsed, list):
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "config_json must decode to a workflow config object or a list of workflow config objects. "
-                "If you provide a single object, the server can wrap it automatically; scalars and arrays of non-objects are invalid."
-            ),
-        )
-    if not all(isinstance(item, dict) for item in parsed):
-        raise HTTPException(status_code=400, detail="config_json must decode to a list of dictionaries")
-    return parsed
+    
+    # Check if this module requires dict config
+    requires_dict = module_name in DICT_CONFIG_MODULES if module_name else False
+    
+    if requires_dict:
+        # Module requires dict - don't wrap in list
+        if not isinstance(parsed, dict):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Module {module_name} requires config as a dict, but received {type(parsed).__name__}"
+            )
+        return parsed
+    else:
+        # Standard behavior: wrap single dict in list
+        if isinstance(parsed, dict):
+            parsed = [parsed]
+        if not isinstance(parsed, list):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "config_json must decode to a workflow config object or a list of workflow config objects. "
+                    "If you provide a single object, the server can wrap it automatically; scalars and arrays of non-objects are invalid."
+                ),
+            )
+        if not all(isinstance(item, dict) for item in parsed):
+            raise HTTPException(status_code=400, detail="config_json must decode to a list of dictionaries")
+        return parsed
 
 
 def _parse_module_args_json(module_args_json: str) -> dict[str, Any]:
@@ -582,7 +608,7 @@ def _validate_schema_value(path: str, value: Any, schema: dict[str, Any]) -> Non
                 _validate_schema_value(f"{path}[{index}]", item, item_schema)
 
 
-def _validate_workflow_schema_config(module_name: str, config: list[dict[str, Any]]) -> None:
+def _validate_workflow_schema_config(module_name: str, config: list[dict[str, Any]] | dict[str, Any]) -> None:
     spec = _workflow_manager_tool_spec(module_name)
     if spec is None:
         return
@@ -644,9 +670,12 @@ def _validate_reports_config(config: list[dict[str, Any]]) -> None:
                 )
 
 
-def _validate_workflow_config(tool_name: str, module_name: str, config: list[dict[str, Any]]) -> None:
+def _validate_workflow_config(tool_name: str, module_name: str, config: list[dict[str, Any]] | dict[str, Any]) -> None:
+    # Convert dict to list for validation if needed
+    config_list = config if isinstance(config, list) else [config]
+    
     if tool_name == "reports" or module_name == "reports_workflow_manager":
-        _validate_reports_config(config)
+        _validate_reports_config(config_list)
     _validate_workflow_schema_config(module_name, config)
 
 
@@ -1561,7 +1590,7 @@ def _register_generic_workflow_tools() -> None:
                     ctx: Context | None = None,
                 ) -> dict[str, Any]:
                     assert ctx is not None
-                    config = _parse_config_json(config_json)
+                    config = _parse_config_json(config_json, module_name=module_name)
                     _validate_workflow_config(tool_name, module_name, config)
                     return (
                         await _submit(
@@ -1591,7 +1620,7 @@ def _register_generic_workflow_tools() -> None:
                     ctx: Context | None = None,
                 ) -> dict[str, Any]:
                     assert ctx is not None
-                    config = _parse_config_json(config_json)
+                    config = _parse_config_json(config_json, module_name=module_name)
                     _validate_workflow_config(tool_name, module_name, config)
                     return (
                         await _submit(
