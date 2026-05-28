@@ -1299,6 +1299,27 @@ See `deploy/` directory for production configurations.
 - `GET /healthz` - Health check
 - `POST /mcp` - MCP protocol endpoint  
 - `GET /iactasks/get/{task_id}` - Task status
+- `GET /iactasks/get/{task_id}/logs` - Task logs and artifacts
+
+## Documentation
+
+### Module Dependencies Guide
+See **[MODULE_DEPENDENCIES.md](MODULE_DEPENDENCIES.md)** for comprehensive documentation on:
+- **Mandatory requirements** for each workflow module
+- **How to get required information** (device IPs, site IDs, etc.)
+- **Prerequisite data gathering** using config generators
+- **Complete workflow examples** with dependency chains
+- **Troubleshooting** common prerequisite errors
+
+**Example:** For compliance checks, you need either:
+- Device IP (get from `generate_inventory_config()`)
+- Site ID (get from `generate_site_config()`)
+
+### Additional Resources
+- [Examples](examples/) - Working code samples
+- [Tool Catalog](tool_catalog.yaml) - All available modules
+- [Schema Architecture](SCHEMA_DRIVEN_ARCHITECTURE.md) - Tool registry design
+- [Contributing](CONTRIBUTING.md) - Development guide
 
 ## Troubleshooting
 
