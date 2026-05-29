@@ -33,6 +33,7 @@ from models import (
     NetworkSettingsRequest,
     SiteProvisionRequest,
     SiteType,
+    TaskLifecycleStatus,
     TaskRecord,
     TaskSubmissionResponse,
     TemplateDeployRequest,
