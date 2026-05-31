@@ -87,6 +87,93 @@ Server will be available at: `http://127.0.0.1:8000`
 
 ### 5. Test
 
+#### Option A: With API Key Authentication (Recommended)
+
+**Step 1: Generate a secure API key**
+```bash
+# Generate a random 32-character API key
+API_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+echo "Generated API Key: $API_KEY"
+
+# Or use a custom key
+API_KEY="my-secure-key-12345"
+```
+
+**Step 2: Configure the server**
+```bash
+# Add to your .env file or export
+export API_KEY_ENABLED=true
+export API_KEYS="$API_KEY"
+
+# Restart server to apply changes
+catalyst-center-iac-mcp
+```
+
+**Step 3: Test with API key**
+```bash
+# Health check with API key
+curl -k https://127.0.0.1:8000/healthz \
+  -H "X-API-Key: $API_KEY"
+
+# Expected response:
+# {"status": "ok", "subject": "apikey:my-secur..."}
+
+# List available tools with API key
+curl -k -X POST https://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+
+# Call a tool with API key
+curl -k -X POST https://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "list_catalyst_centers",
+      "arguments": {}
+    }
+  }'
+
+# Check task status with API key
+TASK_ID="your-task-id-here"
+curl -k https://127.0.0.1:8000/iactasks/get/$TASK_ID \
+  -H "X-API-Key: $API_KEY"
+
+# Get task logs with API key
+curl -k https://127.0.0.1:8000/iactasks/get/$TASK_ID/logs \
+  -H "X-API-Key: $API_KEY"
+```
+
+**Multiple API Keys (for different clients):**
+```bash
+# Generate multiple keys
+KEY_CI_CD=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+KEY_MONITORING=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+KEY_BACKUP=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+
+# Configure server with multiple keys
+export API_KEYS="$KEY_CI_CD,$KEY_MONITORING,$KEY_BACKUP"
+
+# Each client uses their own key
+curl -H "X-API-Key: $KEY_CI_CD" https://127.0.0.1:8000/mcp ...
+curl -H "X-API-Key: $KEY_MONITORING" https://127.0.0.1:8000/mcp ...
+```
+
+**Custom Header Name:**
+```bash
+# Use a custom header instead of X-API-Key
+export API_KEY_HEADER="X-Custom-Auth"
+
+# Restart server, then use custom header
+curl -H "X-Custom-Auth: $API_KEY" https://127.0.0.1:8000/healthz
+```
+
+#### Option B: With Session ID (Stateful)
+
 ```bash
 # Health check
 curl -k https://127.0.0.1:8000/healthz
@@ -98,6 +185,8 @@ SESSION_ID=$(curl -k -s -D - https://127.0.0.1:8000/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}' \
   | awk 'BEGIN{IGNORECASE=1} /^mcp-session-id:/{print $2}' | tr -d '\r')
 
+echo "Session ID: $SESSION_ID"
+
 # List available tools with the returned session ID
 curl -k -X POST https://127.0.0.1:8000/mcp \
   -H "Content-Type: application/json" \
@@ -105,6 +194,22 @@ curl -k -X POST https://127.0.0.1:8000/mcp \
   -H "mcp-session-id: ${SESSION_ID}" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 ```
+
+#### Option C: Without Authentication (Development Only)
+
+```bash
+# Disable authentication
+export API_KEY_ENABLED=false
+export OAUTH_ENABLED=false
+
+# Restart server, then test without headers
+curl -k https://127.0.0.1:8000/healthz
+curl -k -X POST https://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+**⚠️ Security Note:** Always use API keys or OAuth in production. Anonymous access should only be used for local development.
 
 ## Tool Categories
 
