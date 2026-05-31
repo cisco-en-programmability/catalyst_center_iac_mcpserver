@@ -303,36 +303,93 @@ class McpPathCanonicalizationMiddleware:
 def get_identity_context(
     request: Request,
     authorization: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
+    """
+    Authenticate requests using OAuth bearer tokens or API keys.
+    
+    Supports three authentication modes:
+    1. API Key: X-API-Key header (if api_key_enabled=true)
+    2. OAuth: Bearer token in Authorization header (if oauth_enabled=true)
+    3. Anonymous: No authentication (if both disabled)
+    """
+    # Allow anonymous healthcheck if configured
     if (
         request.url.path == "/healthz"
         and settings.allow_anonymous_healthcheck
         and not settings.oauth_enabled
+        and not settings.api_key_enabled
     ):
         return {"subject": "anonymous", "tenant_id": "default"}
-    if not settings.oauth_enabled:
-        return {"subject": "anonymous", "tenant_id": "default"}
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing bearer token")
-    if not settings.oauth_jwks_url:
-        raise HTTPException(status_code=500, detail="oauth_jwks_url must be configured when OAuth is enabled")
-    token = authorization.split(" ", 1)[1]
-    try:
-        signing_key = jwt.PyJWKClient(settings.oauth_jwks_url).get_signing_key_from_jwt(token)
-        claims = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
-            audience=settings.oauth_audience,
-            issuer=settings.oauth_issuer,
-        )
-    except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid bearer token: {exc}") from exc
-    return {
-        "subject": claims.get("sub", "unknown"),
-        "tenant_id": claims.get("tenant_id") or claims.get("tid") or "default",
-    }
+    
+    # Try API Key authentication first (if enabled)
+    if settings.api_key_enabled:
+        if not x_api_key:
+            raise HTTPException(
+                status_code=401,
+                detail=f"Missing API key in {settings.api_key_header} header",
+                headers={"WWW-Authenticate": "ApiKey"},
+            )
+        
+        if not settings.api_keys:
+            raise HTTPException(
+                status_code=500,
+                detail="API_KEYS must be configured when API key authentication is enabled"
+            )
+        
+        # Parse comma-separated API keys
+        valid_keys = [k.strip() for k in settings.api_keys.split(",") if k.strip()]
+        
+        if x_api_key not in valid_keys:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid API key",
+                headers={"WWW-Authenticate": "ApiKey"},
+            )
+        
+        # API key authenticated - use key as subject
+        return {
+            "subject": f"apikey:{x_api_key[:8]}...",  # Show first 8 chars for logging
+            "tenant_id": "default",
+        }
+    
+    # Try OAuth authentication (if enabled)
+    if settings.oauth_enabled:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(
+                status_code=401,
+                detail="Missing bearer token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not settings.oauth_jwks_url:
+            raise HTTPException(
+                status_code=500,
+                detail="oauth_jwks_url must be configured when OAuth is enabled"
+            )
+        token = authorization.split(" ", 1)[1]
+        try:
+            signing_key = jwt.PyJWKClient(settings.oauth_jwks_url).get_signing_key_from_jwt(token)
+            claims = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
+                audience=settings.oauth_audience,
+                issuer=settings.oauth_issuer,
+            )
+        except jwt.PyJWTError as exc:
+            raise HTTPException(
+                status_code=401,
+                detail=f"Invalid bearer token: {exc}",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from exc
+        return {
+            "subject": claims.get("sub", "unknown"),
+            "tenant_id": claims.get("tenant_id") or claims.get("tid") or "default",
+        }
+    
+    # No authentication enabled - allow anonymous
+    return {"subject": "anonymous", "tenant_id": "default"}
 
 
 settings = get_settings()

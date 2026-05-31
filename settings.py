@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     oauth_audience: str | None = None
     oauth_jwks_url: str | None = None
     allow_anonymous_healthcheck: bool = True
+    
+    # API Key Authentication
+    api_key_enabled: bool = False
+    api_keys: str | None = None  # Comma-separated list of valid API keys
+    api_key_header: str = "X-API-Key"  # Header name for API key
 
     def tenant_env_name(self, tenant_id: str, field_name: str) -> str:
         tenant = tenant_id.strip().upper().replace("-", "_")

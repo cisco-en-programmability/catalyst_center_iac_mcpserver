@@ -529,6 +529,33 @@ TLS_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 SERVER_PORT=8443
 ```
 
+### API Key Authentication (Recommended for Services)
+
+```bash
+# Enable API key authentication
+API_KEY_ENABLED=true
+
+# Comma-separated list of valid API keys
+API_KEYS=your-secret-key-12345,another-key-67890
+
+# Optional: Custom header name (default: X-API-Key)
+API_KEY_HEADER=X-API-Key
+```
+
+**Usage:**
+```bash
+curl -H "X-API-Key: your-secret-key-12345" \
+  http://localhost:8000/mcp \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+**Generate secure keys:**
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+See **[docs/API_KEY_AUTHENTICATION.md](docs/API_KEY_AUTHENTICATION.md)** for complete guide.
+
 ### OAuth Environment Variables
 
 ```bash
