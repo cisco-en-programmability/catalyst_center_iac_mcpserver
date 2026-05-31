@@ -303,14 +303,13 @@ class McpPathCanonicalizationMiddleware:
 def get_identity_context(
     request: Request,
     authorization: str | None = Header(default=None),
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     """
     Authenticate requests using OAuth bearer tokens or API keys.
     
     Supports three authentication modes:
-    1. API Key: X-API-Key header (if api_key_enabled=true)
+    1. API Key: Configurable header (default: X-API-Key) (if api_key_enabled=true)
     2. OAuth: Bearer token in Authorization header (if oauth_enabled=true)
     3. Anonymous: No authentication (if both disabled)
     """
@@ -325,7 +324,10 @@ def get_identity_context(
     
     # Try API Key authentication first (if enabled)
     if settings.api_key_enabled:
-        if not x_api_key:
+        # Read API key from configurable header
+        api_key = request.headers.get(settings.api_key_header)
+        
+        if not api_key:
             raise HTTPException(
                 status_code=401,
                 detail=f"Missing API key in {settings.api_key_header} header",
@@ -341,7 +343,7 @@ def get_identity_context(
         # Parse comma-separated API keys
         valid_keys = [k.strip() for k in settings.api_keys.split(",") if k.strip()]
         
-        if x_api_key not in valid_keys:
+        if api_key not in valid_keys:
             raise HTTPException(
                 status_code=401,
                 detail="Invalid API key",
@@ -350,7 +352,7 @@ def get_identity_context(
         
         # API key authenticated - use key as subject
         return {
-            "subject": f"apikey:{x_api_key[:8]}...",  # Show first 8 chars for logging
+            "subject": f"apikey:{api_key[:8]}...",  # Show first 8 chars for logging
             "tenant_id": "default",
         }
     

@@ -28,7 +28,17 @@ API_KEY_ENABLED=true
 API_KEYS=key1_abc123def456,key2_xyz789ghi012,key3_mno345pqr678
 
 # Optional: Custom header name (default: X-API-Key)
+# Note: Header names are case-insensitive in HTTP
 API_KEY_HEADER=X-API-Key
+```
+
+**Custom Header Example:**
+```bash
+# Use a custom header name
+API_KEY_HEADER=X-Custom-Auth-Key
+
+# Client must use the custom header
+curl -H "X-Custom-Auth-Key: your-key" http://localhost:8000/mcp
 ```
 
 ### Example .env File
@@ -370,6 +380,102 @@ export OAUTH_ENABLED=false
 curl http://localhost:8000/healthz
 
 # Expected: {"status": "ok", "subject": "anonymous"}
+```
+
+### Comprehensive Validation Test Suite
+
+Run this complete test suite to validate all authentication scenarios:
+
+```bash
+#!/bin/bash
+# API Key Authentication Validation Test Suite
+
+BASE_URL="http://localhost:8000"
+VALID_KEY="test-key-12345"
+INVALID_KEY="wrong-key"
+
+echo "=== API Key Authentication Test Suite ==="
+echo
+
+# Setup
+export API_KEY_ENABLED=true
+export API_KEYS="$VALID_KEY,another-key-67890"
+export OAUTH_ENABLED=false
+
+# Restart server (adjust command as needed)
+# systemctl restart catalyst-center-iac-mcp
+
+echo "Test 1: Missing API key (should return 401)"
+curl -s -w "\nHTTP Status: %{http_code}\n" \
+  "$BASE_URL/healthz" | head -5
+echo
+
+echo "Test 2: Invalid API key (should return 401)"
+curl -s -w "\nHTTP Status: %{http_code}\n" \
+  -H "X-API-Key: $INVALID_KEY" \
+  "$BASE_URL/healthz" | head -5
+echo
+
+echo "Test 3: Valid API key #1 (should return 200)"
+curl -s -w "\nHTTP Status: %{http_code}\n" \
+  -H "X-API-Key: $VALID_KEY" \
+  "$BASE_URL/healthz"
+echo
+
+echo "Test 4: Valid API key #2 (should return 200)"
+curl -s -w "\nHTTP Status: %{http_code}\n" \
+  -H "X-API-Key: another-key-67890" \
+  "$BASE_URL/healthz"
+echo
+
+echo "Test 5: Custom header name"
+export API_KEY_HEADER="X-Custom-Auth"
+# Restart server
+curl -s -w "\nHTTP Status: %{http_code}\n" \
+  -H "X-Custom-Auth: $VALID_KEY" \
+  "$BASE_URL/healthz"
+echo
+
+echo "Test 6: MCP tools/list with valid key"
+curl -s -w "\nHTTP Status: %{http_code}\n" \
+  -H "X-API-Key: $VALID_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  "$BASE_URL/mcp" | head -10
+echo
+
+echo "=== Test Suite Complete ==="
+```
+
+**Expected Results:**
+```
+Test 1: 401 - Missing API key in X-API-Key header
+Test 2: 401 - Invalid API key
+Test 3: 200 - {"status": "ok", "subject": "apikey:test-key..."}
+Test 4: 200 - {"status": "ok", "subject": "apikey:another-k..."}
+Test 5: 200 - Works with custom header
+Test 6: 200 - Returns list of tools
+```
+
+### Test Custom Header Configuration
+
+```bash
+# Test that API_KEY_HEADER setting actually works
+export API_KEY_ENABLED=true
+export API_KEYS=my-test-key
+export API_KEY_HEADER=X-My-Custom-Header
+
+# Restart server
+python -m uvicorn server:app --reload &
+sleep 2
+
+# This should FAIL (wrong header)
+curl -H "X-API-Key: my-test-key" http://localhost:8000/healthz
+# Expected: 401 Missing API key in X-My-Custom-Header header
+
+# This should SUCCEED (correct header)
+curl -H "X-My-Custom-Header: my-test-key" http://localhost:8000/healthz
+# Expected: 200 {"status": "ok", "subject": "apikey:my-test-..."}
 ```
 
 ## Production Deployment
