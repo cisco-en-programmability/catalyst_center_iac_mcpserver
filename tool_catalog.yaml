@@ -5,44 +5,144 @@ workflow_tools:
   configuration_creation:
     site_management:
       - module_name: site_workflow_manager
+        description: |
+          Create, update, or delete site hierarchy elements (areas, buildings, floors) in Catalyst Center.
+          Pass `config_json` as a JSON list of site definitions. Supports full CRUD operations on site topology
+          and auto-creates parent areas when needed.
       - module_name: network_settings_workflow_manager
+        description: |
+          Configure site-level network services including DHCP servers, DNS servers, NTP, timezone, syslog,
+          SNMP, and AAA settings. Pass `config_json` as a JSON list of network settings objects scoped to
+          specific sites in the hierarchy.
       - module_name: tags_workflow_manager
+        description: |
+          Create, update, or delete tags used to classify and group devices, sites, and interfaces.
+          Pass `config_json` as a JSON list of tag definitions. Tags enable policy application and
+          logical grouping of network resources.
     ise_and_aaa:
       - module_name: user_role_workflow_manager
+        description: |
+          Manage Catalyst Center users, roles, and access groups for role-based access control (RBAC).
+          Pass `config_json` as a JSON object (not a list) with user and role definitions.
+          Supports creating, updating, and deleting user accounts with site-scoped permissions.
       - module_name: ise_radius_integration_workflow_manager
+        description: |
+          Configure Cisco ISE RADIUS server integration for centralized AAA (Authentication, Authorization,
+          and Accounting). Pass `config_json` as a JSON list of ISE server configurations including
+          server address, shared secret, and authentication settings.
     cli_templates:
       - module_name: template_workflow_manager
+        description: |
+          Deploy CLI configuration templates to managed network devices. Pass `config_json` as a JSON list
+          of template deployment objects specifying the template, target devices, and variable bindings.
+          Supports multiple failure policies: abort on error, skip failed devices, or rollback changes.
     pnp:
       - module_name: pnp_workflow_manager
+        description: |
+          Manage Plug and Play (PnP) zero-touch device provisioning workflows. Pass `config_json` as a JSON
+          list of PnP device claim and provisioning rules. Automates onboarding of new devices including
+          image installation, configuration push, and site assignment.
     wireless:
       - module_name: wireless_design_workflow_manager
+        description: |
+          Design and configure wireless networks including WLANs, SSIDs, RF profiles, and wireless
+          controller settings. Pass `config_json` as a JSON list of wireless design objects covering
+          authentication type, encryption, band selection, and site assignment.
     network_profiles:
       - module_name: network_profile_switching_workflow_manager
+        description: |
+          Create and manage switching network profiles that define standardized port configurations,
+          VLAN assignments, and interface templates. Pass `config_json` as a JSON list of switching
+          profile definitions to ensure consistent configuration across access-layer switches.
       - module_name: network_profile_wireless_workflow_manager
+        description: |
+          Create and manage wireless network profiles that define SSID-to-site mappings, AP group
+          assignments, and wireless policy templates. Pass `config_json` as a JSON list of wireless
+          profile definitions to standardize wireless configurations across sites.
     assurance:
       - module_name: assurance_issue_workflow_manager
+        description: |
+          Manage network assurance issues including issue resolution, priority settings, and custom
+          issue definitions. Pass `config_json` as a JSON list of issue configuration objects.
+          Supports creating issue triggers and setting remediation workflows.
       - module_name: assurance_icap_settings_workflow_manager
+        description: |
+          Configure Intelligent Capture (ICAP) settings for wireless client troubleshooting and
+          packet capture analysis. Pass `config_json` as a JSON list of ICAP configuration objects
+          specifying capture parameters and target clients.
       - module_name: assurance_device_health_score_settings_workflow_manager
+        description: |
+          Configure device health score thresholds and scoring parameters used by Assurance to
+          evaluate device status. Pass `config_json` as a JSON list of health score settings
+          defining metrics, weights, and alert thresholds for device health monitoring.
     application_policy:
       - module_name: application_policy_workflow_manager
+        description: |
+          Create and manage application-aware network policies for QoS, traffic classification, and
+          business-relevant application prioritization. Pass `config_json` as a JSON list of policy
+          definitions mapping applications to queuing profiles and marking rules.
     events_and_notifications:
       - module_name: events_and_notifications_workflow_manager
+        description: |
+          Configure event subscriptions, webhook destinations, and notification channels. Pass `config_json`
+          as a JSON list of event subscription objects specifying event types, filters, and delivery
+          endpoints (email, webhook, SNMP trap, syslog).
     config_backups:
       - module_name: device_configs_backup_workflow_manager
+        description: |
+          Back up running and startup configurations from managed network devices. Pass `config_json`
+          as a JSON list specifying target devices or sites for configuration backup.
+          Stores configuration snapshots for compliance auditing and disaster recovery.
       - module_name: backup_and_restore_workflow_manager
         destructive: true
+        description: |
+          Perform full Catalyst Center system backup or restore operations. Pass `config_json` as a JSON
+          list of backup/restore task objects. This is a destructive operation — restoring from backup
+          will overwrite the current system state. Confirm with the user before execution.
     access_points_configuration:
       - module_name: accesspoint_workflow_manager
+        description: |
+          Configure access point radio settings including channel, transmit power, antenna, and operational
+          mode. Pass `config_json` as a JSON list of AP configuration objects specifying the target APs
+          and desired radio parameters.
       - module_name: accesspoint_location_workflow_manager
+        description: |
+          Assign access points to physical locations on floor maps including x/y coordinates and mounting
+          height. Pass `config_json` as a JSON list of AP location objects mapping AP names or MAC
+          addresses to specific floor plan positions for location-based services.
     discovery:
       - module_name: discovery_workflow_manager
+        description: |
+          Run network device discovery jobs using CDP, LLDP, IP address range, or single IP methods.
+          Pass `config_json` as a JSON list of discovery job definitions specifying the discovery type,
+          IP ranges or seed devices, credentials, and protocol order.
       - module_name: device_credential_workflow_manager
+        description: |
+          Create, update, or delete global device credentials (CLI, SNMPv2/v3, HTTP read/write) used
+          for device discovery and management. Pass `config_json` as a JSON list of credential
+          definitions including credential type, username, password, and scope.
     inventory:
       - module_name: inventory_workflow_manager
+        description: |
+          Manage the device inventory including adding devices, assigning devices to sites, updating
+          device roles, and exporting device lists. Pass `config_json` as a JSON list of inventory
+          operation objects specifying the action and target devices.
       - module_name: network_devices_info_workflow_manager
+        description: |
+          Query and export detailed device information from the inventory including hardware model,
+          software version, management IP, and operational status. Pass `config_json` as a JSON list;
+          uses `state: gathered` by default for read-only queries.
       - module_name: network_compliance_workflow_manager
+        description: |
+          Run compliance checks against managed devices to verify configuration adherence to defined
+          policies. Pass `config_json` as a JSON list of compliance check objects specifying target
+          devices and compliance categories to evaluate.
     provision:
       - module_name: provision_workflow_manager
+        description: |
+          Provision network devices by assigning them to sites and pushing site-specific configurations.
+          Pass `config_json` as a JSON list of provisioning objects specifying devices, target sites,
+          and device roles (access, distribution, core, border).
     reports:
       - module_name: reports_workflow_manager
         description: |
@@ -51,69 +151,212 @@ workflow_tools:
           Confirm the intended report `view` with the user before execution. If the view is unknown, ask the user to choose it instead of guessing.
     path_trace:
       - module_name: path_trace_workflow_manager
+        description: |
+          Trace the network path between a source and destination IP to identify intermediate hops,
+          interfaces, and potential issues. Pass `config_json` as a JSON list of path trace requests
+          specifying source IP, destination IP, and optional protocol/port filters.
     sd_access_fabric:
       - module_name: sda_fabric_devices_workflow_manager
+        description: |
+          Add, update, or remove devices from an SD-Access fabric, assigning roles such as border node,
+          control plane node, or edge node. Pass `config_json` as a JSON list of fabric device
+          definitions specifying the device and its intended fabric role.
       - module_name: sda_fabric_multicast_workflow_manager
+        description: |
+          Configure multicast settings within an SD-Access fabric including multicast replication mode
+          and rendezvous point assignments. Pass `config_json` as a JSON list of multicast configuration
+          objects for the target fabric site.
       - module_name: sda_fabric_sites_zones_workflow_manager
+        description: |
+          Create or manage SD-Access fabric sites and authentication zones. Pass `config_json` as a JSON
+          list of fabric site/zone definitions. Fabric sites define the SD-Access boundary while zones
+          control endpoint authentication policy (open, closed, low-impact).
       - module_name: sda_fabric_transits_workflow_manager
+        description: |
+          Configure transit networks connecting SD-Access fabric sites to each other or to external
+          networks. Pass `config_json` as a JSON list of transit definitions specifying transit type
+          (IP, SDA) and connected fabric sites.
       - module_name: sda_fabric_virtual_networks_workflow_manager
+        description: |
+          Create and manage virtual networks (VNs) in SD-Access fabric for network segmentation.
+          Pass `config_json` as a JSON list of VN definitions specifying VN name, associated VLANs,
+          and traffic policies for overlay network isolation.
       - module_name: sda_extranet_policies_workflow_manager
+        description: |
+          Configure extranet policies to allow controlled traffic flow between SD-Access virtual
+          networks. Pass `config_json` as a JSON list of extranet policy objects defining source VN,
+          destination VN, and permitted communication rules.
       - module_name: fabric_devices_info_workflow_manager
+        description: |
+          Query and export information about devices currently participating in an SD-Access fabric
+          including their roles and connectivity status. Pass `config_json` as a JSON list;
+          uses `state: gathered` by default for read-only queries.
       - module_name: sda_host_port_onboarding_workflow_manager
+        description: |
+          Onboard host-facing switch ports into the SD-Access fabric, configuring port assignments
+          to virtual networks and scalable groups. Pass `config_json` as a JSON list of port
+          onboarding objects specifying the switch, interface, and target VN/SGT.
     lan_automation:
       - module_name: lan_automation_workflow_manager
+        description: |
+          Automate LAN device discovery and deployment using SD-Access LAN Automation. Pass `config_json`
+          as a JSON list of LAN automation session objects specifying seed devices, discovery protocols,
+          and target site assignments for zero-touch campus deployment.
     wired_campus:
       - module_name: wired_campus_automation_workflow_manager
+        description: |
+          Automate wired campus network configuration including access-layer switch provisioning and
+          standardized port configurations. Pass `config_json` as a JSON list of wired campus automation
+          objects specifying target devices and configuration policies.
     software_upgrade_swim:
       - module_name: swim_workflow_manager
+        description: |
+          Manage software image lifecycle (SWIM) including image import, distribution, and activation
+          on network devices. Pass `config_json` as a JSON list of SWIM task objects specifying target
+          devices, image versions, and upgrade scheduling.
     rma:
       - module_name: rma_workflow_manager
         destructive: true
+        description: |
+          Execute Return Material Authorization (RMA) device replacement workflows. Pass `config_json`
+          as a JSON list of RMA task objects specifying the faulty device and replacement device.
+          This is a destructive operation — it deregisters the old device and transfers configuration
+          to the replacement. Confirm with the user before execution.
   configuration_generation:
     site_management:
       - module_name: site_playbook_config_generator
+        description: |
+          Generate the current site hierarchy configuration from Catalyst Center. Returns site definitions
+          (areas, buildings, floors) in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: network_settings_playbook_config_generator
+        description: |
+          Generate the current network settings (DHCP, DNS, NTP, syslog, SNMP) from Catalyst Center.
+          Returns site-scoped settings in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: tags_playbook_config_generator
+        description: |
+          Generate the current tag definitions and assignments from Catalyst Center. Returns tag
+          configurations in playbook-ready format. Uses read-only `state: gathered` by default.
     ise_and_aaa:
       - module_name: user_role_playbook_config_generator
+        description: |
+          Generate the current user, role, and access group definitions from Catalyst Center.
+          Returns RBAC configurations in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: ise_radius_integration_playbook_config_generator
+        description: |
+          Generate the current ISE RADIUS integration settings from Catalyst Center. Returns AAA server
+          configurations in playbook-ready format. Uses read-only `state: gathered` by default.
     cli_templates:
       - module_name: template_playbook_config_generator
+        description: |
+          Generate the current CLI template definitions and deployment history from Catalyst Center.
+          Returns template configurations in playbook-ready format. Uses read-only `state: gathered` by default.
     pnp:
       - module_name: pnp_playbook_config_generator
+        description: |
+          Generate the current PnP device claims and provisioning rules from Catalyst Center.
+          Returns PnP configurations in playbook-ready format. Uses read-only `state: gathered` by default.
     wireless:
       - module_name: wireless_design_playbook_config_generator
+        description: |
+          Generate the current wireless design (WLANs, SSIDs, RF profiles) from Catalyst Center.
+          Returns wireless configurations in playbook-ready format. Uses read-only `state: gathered` by default.
     network_profiles:
       - module_name: network_profile_switching_playbook_config_generator
+        description: |
+          Generate the current switching network profiles from Catalyst Center. Returns profile
+          definitions in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: network_profile_wireless_playbook_config_generator
+        description: |
+          Generate the current wireless network profiles from Catalyst Center. Returns profile
+          definitions in playbook-ready format. Uses read-only `state: gathered` by default.
     assurance:
       - module_name: assurance_issue_playbook_config_generator
+        description: |
+          Generate the current assurance issue settings and thresholds from Catalyst Center.
+          Returns issue configurations in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: assurance_device_health_score_settings_playbook_config_generator
+        description: |
+          Generate the current device health score settings from Catalyst Center. Returns health
+          scoring configurations in playbook-ready format. Uses read-only `state: gathered` by default.
     application_policy:
       - module_name: application_policy_playbook_config_generator
+        description: |
+          Generate the current application policies and QoS profiles from Catalyst Center.
+          Returns policy configurations in playbook-ready format. Uses read-only `state: gathered` by default.
     events_and_notifications:
       - module_name: events_and_notifications_playbook_config_generator
+        description: |
+          Generate the current event subscriptions and notification settings from Catalyst Center.
+          Returns event configurations in playbook-ready format. Uses read-only `state: gathered` by default.
     config_backups:
       - module_name: backup_and_restore_playbook_config_generator
+        description: |
+          Generate the current backup schedule and restore point information from Catalyst Center.
+          Returns backup configurations in playbook-ready format. Uses read-only `state: gathered` by default.
     access_points_configuration:
       - module_name: accesspoint_playbook_config_generator
+        description: |
+          Generate the current access point radio and operational settings from Catalyst Center.
+          Returns AP configurations in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: accesspoint_location_playbook_config_generator
+        description: |
+          Generate the current AP-to-floor-map location assignments from Catalyst Center.
+          Returns AP location data in playbook-ready format. Uses read-only `state: gathered` by default.
     discovery:
       - module_name: discovery_playbook_config_generator
+        description: |
+          Generate the current discovery job definitions and results from Catalyst Center.
+          Returns discovery configurations in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: device_credential_playbook_config_generator
+        description: |
+          Generate the current global device credential definitions (CLI, SNMP, HTTP) from Catalyst Center.
+          Returns credential configurations in playbook-ready format. Uses read-only `state: gathered` by default.
     inventory:
       - module_name: inventory_playbook_config_generator
+        description: |
+          Generate the current device inventory and site assignments from Catalyst Center.
+          Returns inventory data in playbook-ready format. Uses read-only `state: gathered` by default.
     provision:
       - module_name: provision_playbook_config_generator
+        description: |
+          Generate the current device provisioning status and site assignments from Catalyst Center.
+          Returns provisioning configurations in playbook-ready format. Uses read-only `state: gathered` by default.
     sd_access_fabric:
       - module_name: sda_fabric_devices_playbook_config_generator
+        description: |
+          Generate the current SD-Access fabric device roles and assignments from Catalyst Center.
+          Returns fabric device configurations in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: sda_fabric_multicast_playbook_config_generator
+        description: |
+          Generate the current SD-Access fabric multicast settings from Catalyst Center.
+          Returns multicast configurations in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: sda_fabric_sites_zones_playbook_config_generator
+        description: |
+          Generate the current SD-Access fabric sites and authentication zones from Catalyst Center.
+          Returns fabric site/zone configurations in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: sda_fabric_transits_playbook_config_generator
+        description: |
+          Generate the current SD-Access transit network definitions from Catalyst Center.
+          Returns transit configurations in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: sda_fabric_virtual_networks_playbook_config_generator
+        description: |
+          Generate the current SD-Access virtual network definitions and VLAN mappings from Catalyst Center.
+          Returns VN configurations in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: sda_extranet_policies_playbook_config_generator
+        description: |
+          Generate the current SD-Access extranet policies (inter-VN rules) from Catalyst Center.
+          Returns extranet policy configurations in playbook-ready format. Uses read-only `state: gathered` by default.
       - module_name: sda_host_port_onboarding_playbook_config_generator
+        description: |
+          Generate the current host port onboarding assignments in SD-Access fabric from Catalyst Center.
+          Returns port-to-VN/SGT mappings in playbook-ready format. Uses read-only `state: gathered` by default.
     wired_campus:
       - module_name: wired_campus_automation_playbook_config_generator
+        description: |
+          Generate the current wired campus automation settings from Catalyst Center.
+          Returns campus configurations in playbook-ready format. Uses read-only `state: gathered` by default.
     rma:
       - module_name: rma_playbook_config_generator
+        description: |
+          Generate the current RMA device replacement history and pending tasks from Catalyst Center.
+          Returns RMA configurations in playbook-ready format. Uses read-only `state: gathered` by default.
