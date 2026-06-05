@@ -566,6 +566,122 @@ def _parse_module_args_json(module_args_json: str) -> dict[str, Any]:
     return parsed
 
 
+def _normalize_sda_host_port_onboarding_generator_args(module_args: dict[str, Any]) -> dict[str, Any]:
+    config = module_args.get("config")
+    if not isinstance(config, dict):
+        return module_args
+
+    component_specific_filters = config.get("component_specific_filters")
+    if not isinstance(component_specific_filters, dict):
+        return module_args
+
+    wireless_ssids = component_specific_filters.get("wireless_ssids")
+    if not isinstance(wireless_ssids, list):
+        return module_args
+
+    normalized_wireless_ssids: list[dict[str, Any]] = []
+    for index, entry in enumerate(wireless_ssids):
+        if not isinstance(entry, dict):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Field `module_args.config.component_specific_filters.wireless_ssids` must be a list "
+                    f"of objects; item at index {index} is `{type(entry).__name__}`."
+                ),
+            )
+
+        fabric_site_name_hierarchy = entry.get("fabric_site_name_hierarchy")
+        if isinstance(fabric_site_name_hierarchy, list):
+            if not fabric_site_name_hierarchy:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Field `module_args.config.component_specific_filters.wireless_ssids[]."
+                        "fabric_site_name_hierarchy` must not be an empty list."
+                    ),
+                )
+            invalid_items = [
+                item for item in fabric_site_name_hierarchy if not isinstance(item, str) or not item.strip()
+            ]
+            if invalid_items:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Field `module_args.config.component_specific_filters.wireless_ssids[]."
+                        "fabric_site_name_hierarchy` must contain only non-empty strings."
+                    ),
+                )
+            for site_name in fabric_site_name_hierarchy:
+                normalized_entry = dict(entry)
+                normalized_entry["fabric_site_name_hierarchy"] = site_name
+                normalized_wireless_ssids.append(normalized_entry)
+            continue
+
+        normalized_wireless_ssids.append(entry)
+
+    if normalized_wireless_ssids != wireless_ssids:
+        normalized_component_filters = dict(component_specific_filters)
+        normalized_component_filters["wireless_ssids"] = normalized_wireless_ssids
+        normalized_config = dict(config)
+        normalized_config["component_specific_filters"] = normalized_component_filters
+        normalized_module_args = dict(module_args)
+        normalized_module_args["config"] = normalized_config
+        return normalized_module_args
+
+    return module_args
+
+
+def _normalize_module_args(module_name: str, module_args: dict[str, Any]) -> dict[str, Any]:
+    if module_name == "sda_host_port_onboarding_playbook_config_generator":
+        return _normalize_sda_host_port_onboarding_generator_args(module_args)
+    return module_args
+
+
+def _module_args_for_validation(module_name: str, module_args: dict[str, Any]) -> dict[str, Any]:
+    if module_name != "sda_host_port_onboarding_playbook_config_generator":
+        return module_args
+
+    config = module_args.get("config")
+    if not isinstance(config, dict):
+        return module_args
+
+    component_specific_filters = config.get("component_specific_filters")
+    if not isinstance(component_specific_filters, dict):
+        return module_args
+
+    wireless_ssids = component_specific_filters.get("wireless_ssids")
+    if not isinstance(wireless_ssids, list):
+        return module_args
+
+    validation_wireless_ssids: list[dict[str, Any]] = []
+    changed = False
+    for entry in wireless_ssids:
+        if not isinstance(entry, dict):
+            validation_wireless_ssids.append(entry)
+            continue
+
+        fabric_site_name_hierarchy = entry.get("fabric_site_name_hierarchy")
+        if isinstance(fabric_site_name_hierarchy, str):
+            validation_entry = dict(entry)
+            validation_entry["fabric_site_name_hierarchy"] = [fabric_site_name_hierarchy]
+            validation_wireless_ssids.append(validation_entry)
+            changed = True
+            continue
+
+        validation_wireless_ssids.append(entry)
+
+    if not changed:
+        return module_args
+
+    validation_component_filters = dict(component_specific_filters)
+    validation_component_filters["wireless_ssids"] = validation_wireless_ssids
+    validation_config = dict(config)
+    validation_config["component_specific_filters"] = validation_component_filters
+    validation_module_args = dict(module_args)
+    validation_module_args["config"] = validation_config
+    return validation_module_args
+
+
 def _validated_verbosity(verbosity: int | None) -> int | None:
     if verbosity is None:
         return None
@@ -681,6 +797,7 @@ def _validate_workflow_schema_config(module_name: str, config: list[dict[str, An
 
 
 def _validate_module_args(module_name: str, module_args: dict[str, Any]) -> None:
+    module_args = _module_args_for_validation(module_name, module_args)
     spec = _workflow_manager_tool_spec(module_name)
     if spec is None:
         return
@@ -706,7 +823,7 @@ def _validate_reports_config(config: list[dict[str, Any]]) -> None:
                 status_code=400,
                 detail=(
                     "The `reports` tool requires `generate_report` to be a non-empty list. "
-                    "Each `generate_report` item must include a non-empty `view` field."
+                    "Each `generate_report` item must include a non-empty `view.view_name` field."
                 ),
             )
         for report_index, report_item in enumerate(generate_report):
@@ -715,17 +832,27 @@ def _validate_reports_config(config: list[dict[str, Any]]) -> None:
                     status_code=400,
                     detail=(
                         "The `reports` tool requires each `generate_report` item to be an object "
-                        "with a non-empty `view` field."
+                        "with a non-empty `view.view_name` field."
                     ),
                 )
             view = report_item.get("view")
-            if not isinstance(view, str) or not view.strip():
+            if not isinstance(view, dict):
                 raise HTTPException(
                     status_code=400,
                     detail=(
                         "The `reports` tool requires `generate_report[].view`. "
                         f"Missing or empty `view` at config_json[{config_index}].generate_report[{report_index}]. "
                         "Confirm the intended report view with the user before execution."
+                    ),
+                )
+            view_name = view.get("view_name")
+            if not isinstance(view_name, str) or not view_name.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "The `reports` tool requires `generate_report[].view.view_name`. "
+                        "Provide the exact report view name confirmed with the user, such as "
+                        "`All Data` or `All Data Version 2.0`."
                     ),
                 )
 
@@ -1085,6 +1212,171 @@ async def list_configured_catalyst_centers() -> dict[str, Any]:
             }
             for cluster in CLUSTER_CATALOG.catalyst_centers
         ]
+    }
+
+
+@mcp.tool(
+    name="list_registered_tools",
+    description=(
+        "List all registered MCP tools exposed by this server, including workflow creation and "
+        "configuration-generation tools, with category metadata."
+    ),
+    annotations=_tool_annotations(read_only=True),
+)
+async def list_registered_tools() -> dict[str, Any]:
+    definitions: list[dict[str, Any]] = []
+
+    for definition in DIRECT_TOOL_DEFINITIONS:
+        definitions.append(
+            {
+                "name": definition.tool_name,
+                "moduleName": definition.module_name,
+                "topCategory": definition.top_category,
+                "workflowCategory": definition.workflow_category,
+                "subcategory": definition.subcategory,
+                "readOnly": definition.read_only,
+                "destructive": definition.destructive,
+            }
+        )
+
+    available_workflow_modules = set(GENERIC_WORKFLOW_MODULES)
+    for definition in TOOL_CATALOG.iter_workflow_tools("configuration_creation"):
+        if definition.module_name in available_workflow_modules:
+            definitions.append(
+                {
+                    "name": definition.tool_name,
+                    "moduleName": definition.module_name,
+                    "topCategory": definition.top_category,
+                    "workflowCategory": definition.workflow_category,
+                    "subcategory": definition.subcategory,
+                    "readOnly": definition.read_only,
+                    "destructive": definition.destructive,
+                }
+            )
+            definitions.append(
+                {
+                    "name": _workflow_manager_alias_name(definition.tool_name),
+                    "moduleName": definition.module_name,
+                    "topCategory": definition.top_category,
+                    "workflowCategory": definition.workflow_category,
+                    "subcategory": definition.subcategory,
+                    "readOnly": definition.read_only,
+                    "destructive": definition.destructive,
+                    "aliasFor": definition.tool_name,
+                }
+            )
+
+    available_generator_modules = set(GENERIC_PLAYBOOK_GENERATOR_MODULES)
+    for definition in TOOL_CATALOG.iter_workflow_tools("configuration_generation"):
+        if definition.module_name in available_generator_modules:
+            definitions.append(
+                {
+                    "name": definition.tool_name,
+                    "moduleName": definition.module_name,
+                    "topCategory": definition.top_category,
+                    "workflowCategory": definition.workflow_category,
+                    "subcategory": definition.subcategory,
+                    "readOnly": definition.read_only,
+                    "destructive": definition.destructive,
+                }
+            )
+
+    supplemental_tools = [
+        {
+            "name": "list_catalyst_centers",
+            "moduleName": None,
+            "topCategory": "direct_tools",
+            "workflowCategory": None,
+            "subcategory": "cluster_discovery",
+            "readOnly": True,
+            "destructive": False,
+        },
+        {
+            "name": "list_configured_catalyst_centers",
+            "moduleName": None,
+            "topCategory": "direct_tools",
+            "workflowCategory": None,
+            "subcategory": "cluster_discovery",
+            "readOnly": True,
+            "destructive": False,
+        },
+        {
+            "name": "list_registered_tools",
+            "moduleName": None,
+            "topCategory": "direct_tools",
+            "workflowCategory": None,
+            "subcategory": "tool_discovery",
+            "readOnly": True,
+            "destructive": False,
+        },
+        {
+            "name": "get_iac_task",
+            "moduleName": None,
+            "topCategory": "direct_tools",
+            "workflowCategory": None,
+            "subcategory": "task_status",
+            "readOnly": True,
+            "destructive": False,
+        },
+        {
+            "name": "get_iac_taskdetail",
+            "moduleName": None,
+            "topCategory": "direct_tools",
+            "workflowCategory": None,
+            "subcategory": "task_status",
+            "readOnly": True,
+            "destructive": False,
+        },
+        {
+            "name": "wait_iac_task",
+            "moduleName": None,
+            "topCategory": "direct_tools",
+            "workflowCategory": None,
+            "subcategory": "task_status",
+            "readOnly": True,
+            "destructive": False,
+        },
+        {
+            "name": "get_task_stdout",
+            "moduleName": None,
+            "topCategory": "direct_tools",
+            "workflowCategory": None,
+            "subcategory": "task_status",
+            "readOnly": True,
+            "destructive": False,
+        },
+        {
+            "name": "get_task_log",
+            "moduleName": None,
+            "topCategory": "direct_tools",
+            "workflowCategory": None,
+            "subcategory": "task_status",
+            "readOnly": True,
+            "destructive": False,
+        },
+    ]
+    definitions.extend(supplemental_tools)
+
+    definitions.sort(key=lambda item: item["name"])
+
+    grouped: dict[str, list[dict[str, Any]]] = {
+        "direct": [],
+        "workflowCreation": [],
+        "workflowGeneration": [],
+    }
+    for item in definitions:
+        if item["workflowCategory"] == "configuration_creation":
+            grouped["workflowCreation"].append(item)
+        elif item["workflowCategory"] == "configuration_generation":
+            grouped["workflowGeneration"].append(item)
+        else:
+            grouped["direct"].append(item)
+
+    return {
+        "total": len(definitions),
+        "counts": {key: len(value) for key, value in grouped.items()},
+        "tools": definitions,
+        "grouped": grouped,
     }
 
 
@@ -1516,9 +1808,14 @@ CONFIRMATION_GUIDANCE = (
 )
 
 REPORTS_VIEW_GUIDANCE = (
-    "For the `reports` tool, each `generate_report` item must include a non-empty `view` field. "
-    "If the report view is unknown, stop and ask the user to choose the view instead of guessing."
+    "For the `reports` tool, each `generate_report` item must include a `view` object with a "
+    "non-empty `view_name` field. If the report view is unknown, stop and ask the user to choose "
+    "the view instead of guessing."
 )
+
+
+def _workflow_manager_alias_name(tool_name: str) -> str:
+    return f"{tool_name}_mcp"
 
 
 def _catalog_meta(definition: ResolvedToolDefinition) -> dict[str, Any]:
@@ -1752,6 +2049,22 @@ def _register_generic_workflow_tools() -> None:
             ),
             meta=_catalog_meta(definition),
         )
+        mcp.tool(
+            generic_tool,
+            name=_workflow_manager_alias_name(definition.tool_name),
+            description=(
+                f"{_workflow_tool_description(definition.description, require_confirmation=not is_read_only, tool_name=definition.tool_name, module_name=definition.module_name).rstrip()}\n\n"
+                f"Compatibility alias for `{definition.tool_name}` using the explicit workflow-manager naming pattern."
+            ),
+            annotations=_tool_annotations(
+                destructive=definition.destructive,
+                read_only=is_read_only,
+            ),
+            meta={
+                **_catalog_meta(definition),
+                "aliasFor": definition.tool_name,
+            },
+        )
 
 
 def _register_generic_playbook_generator_tools() -> None:
@@ -1775,6 +2088,7 @@ def _register_generic_playbook_generator_tools() -> None:
                     if module_args_json is not None
                     else {}
                 )
+                module_args = _normalize_module_args(module_name, module_args)
                 module_args.setdefault("state", WorkflowState.GATHERED.value)
                 _validate_module_args(module_name, module_args)
                 return (

@@ -47,8 +47,8 @@ workflow_tools:
       - module_name: reports_workflow_manager
         description: |
           Run the `reports_workflow_manager`. Pass `config_json` as a JSON list of workflow config objects.
-          For report generation, each `generate_report` item must include a non-empty `view` field.
-          Confirm the intended report `view` with the user before execution. If the view is unknown, ask the user to choose it instead of guessing.
+          For report generation, each `generate_report` item must include a `view` object with a non-empty `view_name` field.
+          Confirm the intended report `view.view_name` with the user before execution. If the view is unknown, ask the user to choose it instead of guessing.
     path_trace:
       - module_name: path_trace_workflow_manager
     sd_access_fabric:
