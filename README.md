@@ -4,10 +4,10 @@ A FastMCP server that exposes Cisco Catalyst Center automation as MCP tools for 
 
 ## What It Does
 
-- **72 MCP tools** for Catalyst Center workflows
+- **70 MCP tools** for Catalyst Center workflows
 - **3 Direct tools**: Simplified interfaces for common operations
-- **39 Workflow tools**: Full control over Catalyst Center configuration
-- **30 Config generators**: Read-only tools for querying current state
+- **38 Workflow tools**: Full control over Catalyst Center configuration
+- **29 Config generators**: Read-only tools for querying current state
 - **Async task execution** with Redis persistence
 - **Multi-tenant support** for multiple Catalyst Center instances
 - **Cluster support** through YAML catalog configuration
@@ -221,7 +221,7 @@ Simplified interfaces for common operations:
 - **`delete_site`** - Delete sites (destructive)
 - **`configure_network_settings`** - Configure DHCP, DNS, NTP, SNMP, Syslog
 
-### Workflow Tools (39)
+### Workflow Tools (38)
 
 Full control over configuration (pattern: `<module>` without the `_workflow_manager` suffix):
 
@@ -230,7 +230,7 @@ Full control over configuration (pattern: `<module>` without the `_workflow_mana
 - Discovery, inventory, provisioning, reports
 - **SD-Access fabric** (8 tools), LAN automation, RMA
 
-### Config Generators (30)
+### Config Generators (29)
 
 Read-only tools for querying state (pattern: `<domain>_config`):
 

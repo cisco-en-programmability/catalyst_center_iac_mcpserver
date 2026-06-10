@@ -93,7 +93,6 @@ DEFAULT_WORKFLOW_MODULES: tuple[str, ...] = (
     "tags_workflow_manager",
     "template_workflow_manager",
     "user_role_workflow_manager",
-    "wired_campus_automation_workflow_manager",
     "wireless_design_workflow_manager",
 )
 

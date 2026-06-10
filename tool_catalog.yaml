@@ -62,8 +62,6 @@ workflow_tools:
       - module_name: sda_host_port_onboarding_workflow_manager
     lan_automation:
       - module_name: lan_automation_workflow_manager
-    wired_campus:
-      - module_name: wired_campus_automation_workflow_manager
     software_upgrade_swim:
       - module_name: swim_workflow_manager
     rma:
@@ -113,7 +111,5 @@ workflow_tools:
       - module_name: sda_fabric_virtual_networks_playbook_config_generator
       - module_name: sda_extranet_policies_playbook_config_generator
       - module_name: sda_host_port_onboarding_playbook_config_generator
-    wired_campus:
-      - module_name: wired_campus_automation_playbook_config_generator
     rma:
       - module_name: rma_playbook_config_generator

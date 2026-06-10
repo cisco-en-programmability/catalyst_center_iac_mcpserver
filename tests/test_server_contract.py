@@ -47,7 +47,7 @@ def test_all_workflow_manager_tools_are_registered():
     assert "swim" in names
     assert "site_mcp" in names
     assert "reports_mcp" in names
-    assert "wired_campus_automation_mcp" in names
+    assert "wired_campus_automation_mcp" not in names
 
 
 def test_playbook_config_generator_tools_are_registered_when_available():
