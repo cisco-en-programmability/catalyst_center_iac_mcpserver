@@ -359,7 +359,9 @@ OAUTH_JWKS_URL=https://your-idp.com/.well-known/jwks.json
 
 JWT claims should include `tenant_id` or `tid`.
 
-## Combining with OAuth
+## Combining with OAuth (Optional — advanced)
+
+> **Note:** Only needed if you want both API key and OAuth running simultaneously. Most deployments use one or the other.
 
 You can enable both authentication methods:
 
@@ -509,7 +511,9 @@ curl -H "X-My-Custom-Header: my-test-key" http://localhost:8000/healthz
 # Expected: 200 {"status": "ok", "subject": "apikey:my-test-..."}
 ```
 
-## Production Deployment
+## Production Deployment (Optional — reference examples)
+
+> **Note:** These are reference deployment patterns for production environments. Not required for basic setup or lab testing. Skip this section unless you are deploying to Docker, Kubernetes, or behind NGINX.
 
 ### Docker Compose
 
@@ -647,7 +651,9 @@ export $(cat .env | xargs)
 pip install python-dotenv
 ```
 
-## Migration Guide
+## Migration Guide (Optional — only if changing auth modes)
+
+> **Note:** Only relevant if you are migrating an existing deployment from one auth mode to another. Skip if setting up fresh.
 
 ### From Anonymous to API Key Auth
 
@@ -693,7 +699,9 @@ To:
 headers = {"X-API-Key": "key1"}
 ```
 
-## Client Configuration
+## Client Configuration (Optional — pick your client)
+
+> **Note:** This section is for **client users** who want to connect to an already-running MCP server. You only need to configure **one** client — whichever tool you use. These are NOT required for the server to run.
 
 ### OpenAI Codex (App-level MCP)
 
@@ -752,7 +760,9 @@ In Codex settings → MCP servers → "Connect to a custom MCP":
 - Use **STDIO** for local development (VS Code spawns the server directly)
 - Use **Streamable HTTP** for remote/shared deployments (Codex, multiple users)
 
-## Self-Signed TLS Certificate (Lab/Testing)
+## Self-Signed TLS Certificate (Optional — Lab/Testing only)
+
+> **Note:** Only needed if you do NOT have a certificate from your IT team or a CA (Let's Encrypt, etc.). If your organization provides TLS certificates, use those instead and skip this section.
 
 For lab environments without a CA-issued certificate:
 
@@ -779,7 +789,9 @@ TLS_KEYFILE=./certs/privkey.pem
 - Python: `httpx.Client(verify=False)`
 - Codex/Claude Desktop: usually handles this automatically
 
-## URL Path Notes
+## URL Path Notes (Good to know)
+
+> **Note:** This is informational. You don't need to configure anything — just be aware of the trailing slash behavior when setting up clients.
 
 ### Trailing Slash Behavior
 
