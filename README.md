@@ -16,6 +16,8 @@ A FastMCP server that exposes Cisco Catalyst Center automation as MCP tools for 
 
 ## Quick Start
 
+For production deployments, start with the Docker or Docker Compose workflows in the [Installation](#installation) section. The local Python quick start below is intended for development and lab environments.
+
 ### 1. Prerequisites
 
 ```bash
@@ -25,8 +27,8 @@ python3 --version
 # Redis 6.0+
 redis-cli ping  # Should return "PONG"
 
-# Python and Ansible dependency manifests
-ls requirements.txt requirements.yml
+# Python package and Ansible collection manifests
+ls pyproject.toml requirements.yml
 ```
 
 ### 2. Install
@@ -40,9 +42,9 @@ cd catalyst_center_iac_mcpserver
 python3 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install Python dependencies
+# Install Python package and Ansible runtime separately
 pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
+pip install "ansible-core>=2.16,<2.19"
 pip install .
 
 # Install Ansible collection
@@ -238,7 +240,7 @@ Read-only tools for querying state (pattern: `<domain>_config`):
 - Default to `state: gathered` for safe operations
 - Same categories as workflow tools
 
-See [TOOLS.md](TOOLS.md) for complete tool inventory.
+See [tool_catalog.yaml](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/tool_catalog.yaml) and the MCP `tools/list` response for the complete tool inventory.
 
 ### Cluster Selection
 
@@ -262,7 +264,7 @@ The server is stateless by design. Redis and runner artifacts hold the operation
 
 ## Multiple Catalyst Centers
 
-Use [`catalyst_center_clusters.yaml`](/Users/pawansi/.codex/worktrees/c252/catalyst_center_iac_mcp/catalyst_center_clusters.yaml) to define multiple Catalyst Center clusters that the MCP server can target by `name`, `label`, `location`, or `host`. You can also mark exactly one enabled cluster with `default: true` so calls that omit `catalyst_center` use that cluster automatically.
+Use [`catalyst_center_clusters.yaml`](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/catalyst_center_clusters.yaml) to define multiple Catalyst Center clusters that the MCP server can target by `name`, `label`, `location`, or `host`. You can also mark exactly one enabled cluster with `default: true` so calls that omit `catalyst_center` use that cluster automatically.
 
 Example:
 
@@ -305,9 +307,16 @@ Then pass `catalyst_center="Portland"` or `catalyst_center="dev"` in any tool ca
 
 ## Installation
 
+Recommended production paths:
+
+- Docker for single-node deployments
+- Docker Compose HTTPS stack for Redis, NGINX, and the MCP server
+
+Use the local Python installation steps below for development and lab environments.
+
 Choose your platform and deployment mode:
 
-### macOS Installation
+### macOS Local Python Installation
 
 #### Prerequisites
 
@@ -338,9 +347,9 @@ cd catalyst_center_iac_mcpserver
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install dependencies
+# Install Python package and Ansible runtime separately
 pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
+pip install "ansible-core>=2.16,<2.19"
 pip install .
 
 # Install Ansible collection
@@ -396,7 +405,7 @@ Server will be available at: `http://127.0.0.1:8000`
 
 ---
 
-### Ubuntu/Debian Installation
+### Ubuntu/Debian Local Python Installation
 
 #### Prerequisites
 
@@ -419,7 +428,7 @@ sudo systemctl enable redis-server
 sudo systemctl start redis-server
 ```
 
-#### Install MCP Server (Production)
+#### Install MCP Server (Local Python)
 
 ```bash
 # Create system user
@@ -450,7 +459,7 @@ cd /opt/catalyst-center-iac-mcp
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
+pip install "ansible-core>=2.16,<2.19"
 pip install .
 ansible-galaxy collection install -r requirements.yml
 EOSU
@@ -503,7 +512,7 @@ EOSU
 
 ---
 
-### RHEL/CentOS/Rocky Linux Installation
+### RHEL/CentOS/Rocky Linux Local Python Installation
 
 #### Prerequisites
 
@@ -529,7 +538,7 @@ Follow the same installation steps as Ubuntu/Debian above, adjusting paths as ne
 
 ---
 
-### Windows WSL2 Installation
+### Windows WSL2 Local Python Installation
 
 #### Prerequisites
 
@@ -555,9 +564,9 @@ cd catalyst_center_iac_mcpserver
 python3.11 -m venv .venv
 source .venv/bin/activate  # On Windows WSL2: source .venv/bin/activate
 
-# Install in development mode
+# Install Python package and Ansible runtime separately
 pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
+pip install "ansible-core>=2.16,<2.19"
 pip install -e ".[dev]"
 
 # Install Ansible collection
@@ -659,7 +668,7 @@ curl -H "X-API-Key: your-secret-key-12345" \
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-See **[docs/API_KEY_AUTHENTICATION.md](docs/API_KEY_AUTHENTICATION.md)** for complete guide.
+See **[docs/API_KEY_AUTHENTICATION.md](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/docs/API_KEY_AUTHENTICATION.md)** for the complete guide.
 
 ### OAuth Environment Variables
 
@@ -685,7 +694,7 @@ When invoking a tool, pass `tenant_id="acme"` to target that Catalyst Center ins
 
 ### Multi-Cluster Credentials
 
-Define the cluster inventory in [`catalyst_center_clusters.yaml`](/Users/pawansi/.codex/worktrees/c252/catalyst_center_iac_mcp/catalyst_center_clusters.yaml), then provide credentials by cluster label or slug:
+Define the cluster inventory in [`catalyst_center_clusters.yaml`](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/catalyst_center_clusters.yaml), then provide credentials by cluster label or slug:
 
 ```bash
 CC_DEV_USERNAME=svc-dev
@@ -706,7 +715,7 @@ The older `CATALYSTCENTER_CLUSTER_*` variable names are still accepted for backw
 - If no default is configured and there is exactly one enabled cluster, that single enabled cluster is used automatically.
 - Use `list_catalyst_centers` to inspect enabled cluster names, labels, locations, and hosts before selecting one.
 
-An example environment file is included at [catalyst-center-iac-mcp.env.example](/Users/pawansi/workspace/catalyst_center_iac_mcp/deploy/env/catalyst-center-iac-mcp.env.example).
+An example environment file is included at [catalyst-center-iac-mcp.env.example](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/deploy/env/catalyst-center-iac-mcp.env.example).
 
 ## Running the Server
 
@@ -753,8 +762,8 @@ This is the better pattern because it gives you:
 
 Provided deployment examples:
 
-- systemd unit: [catalyst-center-iac-mcp.service](/Users/pawansi/workspace/catalyst_center_iac_mcp/deploy/systemd/catalyst-center-iac-mcp.service)
-- NGINX config: [catalyst-center-iac-mcp.conf](/Users/pawansi/workspace/catalyst_center_iac_mcp/deploy/nginx/catalyst-center-iac-mcp.conf)
+- systemd unit: [catalyst-center-iac-mcp.service](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/deploy/systemd/catalyst-center-iac-mcp.service)
+- NGINX config: [catalyst-center-iac-mcp.conf](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/deploy/nginx/catalyst-center-iac-mcp.conf)
 
 ### systemd Deployment
 
@@ -832,7 +841,7 @@ For production HTTPS, put the container behind NGINX, Caddy, HAProxy, or a Kuber
 
 ## Docker Compose HTTPS Stack
 
-For a single-host Linux deployment with Redis, the MCP app, and NGINX HTTPS termination, use the included [compose.yaml](/Users/pawansi/workspace/catalyst_center_iac_mcp/compose.yaml).
+For a single-host Linux deployment with Redis, the MCP app, and NGINX HTTPS termination, use the included [compose.yaml](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/compose.yaml).
 
 This stack includes:
 
@@ -847,7 +856,7 @@ It expects:
   - `deploy/certs/fullchain.pem`
   - `deploy/certs/privkey.pem`
 
-The Docker-specific NGINX config is [catalyst-center-iac-mcp-docker.conf](/Users/pawansi/workspace/catalyst_center_iac_mcp/deploy/nginx/catalyst-center-iac-mcp-docker.conf).
+The Docker-specific NGINX config is [catalyst-center-iac-mcp-docker.conf](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/deploy/nginx/catalyst-center-iac-mcp-docker.conf).
 
 ### Bring Up the Stack
 
@@ -1111,13 +1120,13 @@ Use `get_iac_task` for a compact task summary and `get_iac_taskdetail` for the f
 
 ### Python Examples
 
-See [examples/](examples/) directory for complete Python examples:
+See the [examples directory](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/tree/main/examples) for complete Python examples:
 
 - **`provision_site_example.py`** - Site hierarchy creation
 - **`discovery_example.py`** - Device discovery with polling
 - **`fabric_workflow_example.py`** - SD-Access fabric setup
 - **`network_settings_example.py`** - Network settings configuration
-- **`HTTPS_SETUP.md`** - HTTPS configuration guide
+- **`version_fallback_example.py`** - Version normalization behavior
 
 All examples support HTTPS with SSL verification and OAuth authentication.
 
@@ -1127,227 +1136,11 @@ All examples support HTTPS with SSL verification and OAuth authentication.
 
 Add tenant-specific credentials to environment:
 
-**Step 2: Extract Task ID from Response**
-
-Response will look like:
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "content": [
-      {
-        "type": "text",
-        "text": "{\"iacTaskId\":\"abc-123-def-456\",\"iacStatus\":\"submitted\"}"
-      }
-    ]
-  }
-}
-```
-
-Extract the `iacTaskId`: `abc-123-def-456`
-
-**Step 3: Poll Task Status**
-
-```bash
-curl http://127.0.0.1:8000/iactasks/get/abc-123-def-456
-```
-
-**Step 4: Wait for Completion**
-
-Poll every 5-10 seconds until `iacStatus` is `completed` or `failed`:
-
-```bash
-# Automated polling script
-IAC_TASK_ID="abc-123-def-456"
-while true; do
-  STATUS=$(curl -s http://127.0.0.1:8000/iactasks/get/$IAC_TASK_ID | jq -r '.iacStatus')
-  echo "Status: $STATUS"
-  if [ "$STATUS" = "completed" ] || [ "$STATUS" = "failed" ]; then
-    break
-  fi
-  sleep 5
-done
-
-# Get final result
-curl http://127.0.0.1:8000/iactasks/get/$IAC_TASK_ID | jq .
-```
-
----
-
-### Common Workflows
-
-#### Workflow 1: Create Site Hierarchy
-
-**User Actions:**
-
-1. **Create Area**
-```bash
-curl -X POST http://127.0.0.1:8000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/call",
-    "params": {
-      "name": "provision_site",
-      "arguments": {
-        "site_type": "area",
-        "name": "USA",
-        "parent_path": "Global"
-      }
-    }
-  }'
-```
-
-2. **Create Building**
-```bash
-curl -X POST http://127.0.0.1:8000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 2,
-    "method": "tools/call",
-    "params": {
-      "name": "provision_site",
-      "arguments": {
-        "site_type": "building",
-        "name": "San Jose HQ",
-        "parent_path": "Global/USA",
-        "latitude": 37.3382,
-        "longitude": -121.8863
-      }
-    }
-  }'
-```
-
-3. **Create Floor**
-```bash
-curl -X POST http://127.0.0.1:8000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 3,
-    "method": "tools/call",
-    "params": {
-      "name": "provision_site",
-      "arguments": {
-        "site_type": "floor",
-        "name": "Floor 1",
-        "parent_path": "Global/USA/San Jose HQ",
-        "rf_model": "Outdoor Open Space"
-      }
-    }
-  }'
-```
-
-#### Workflow 2: Discover and Inventory Devices
-
-**User Actions:**
-
-1. **Start Device Discovery**
-```bash
-curl -X POST http://127.0.0.1:8000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/call",
-    "params": {
-      "name": "discover_devices",
-      "arguments": {
-        "discovery_name": "Campus-Discovery-2024",
-        "discovery_type": "CIDR",
-        "ip_address_list": ["10.10.10.0/24"],
-        "protocol_order": "ssh,telnet",
-        "retry": 3,
-        "timeout": 5
-      }
-    }
-  }'
-```
-
-2. **Poll Discovery Task** (wait for completion)
-
-3. **Update Device Inventory**
-```bash
-curl -X POST http://127.0.0.1:8000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 2,
-    "method": "tools/call",
-    "params": {
-      "name": "manage_inventory",
-      "arguments": {
-        "device_ips": ["10.10.10.1", "10.10.10.2"],
-        "site_name": "Global/USA/San Jose HQ",
-        "update_mgmt_ip": true
-      }
-    }
-  }'
-```
-
-#### Workflow 3: Configure Network Settings
-
-**User Actions:**
-
-```bash
-curl -X POST http://127.0.0.1:8000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/call",
-    "params": {
-      "name": "configure_network_settings",
-      "arguments": {
-        "site_name": "Global/USA/San Jose HQ",
-        "dhcp_servers": ["10.10.10.10", "10.10.10.11"],
-        "dns_servers": ["8.8.8.8", "8.8.4.4"],
-        "ntp_servers": ["time.nist.gov", "time.google.com"],
-        "timezone": "America/Los_Angeles",
-        "snmp_servers": ["10.10.10.100"],
-        "syslog_servers": ["10.10.10.101"]
-      }
-    }
-  }'
-```
-
-#### Workflow 4: Read Current Configuration (Read-Only)
-
-**User Actions:**
-
-```bash
-curl -X POST http://127.0.0.1:8000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/call",
-    "params": {
-      "name": "generate_site_config",
-      "arguments": {
-        "module_args_json": "{\"config\":{\"component_specific_filters\":{\"site\":[{\"parent_name_hierarchy\":\"Global/USA\",\"site_type\":[\"building\",\"floor\"]}]}}}"
-      }
-    }
-  }'
-```
-
-This returns current site configuration without making any changes.
-
----
-
 ### Multi-Tenant Usage
 
 This path is still supported for legacy tenant-scoped routing.
 
-**User Actions:**
-
-1. **Configure Second Tenant**
-
 Add to your environment file:
->>>>>>> c215d6036b2dcf7d1cd4558c49a01e1b7391fe86
 ```bash
 CATALYSTCENTER_ACME_HOST=acme-catalyst.example.com
 CATALYSTCENTER_ACME_USERNAME=acme-admin
@@ -1355,6 +1148,26 @@ CATALYSTCENTER_ACME_PASSWORD=acme-secret
 ```
 
 Use with `tenant_id="acme"` in tool calls.
+
+For multi-cluster routing, use the `catalyst_center` argument with selectors defined in [`catalyst_center_clusters.yaml`](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/catalyst_center_clusters.yaml). Inspect configured clusters first with `list_catalyst_centers`.
+
+For end-to-end request examples, see the [examples directory](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/tree/main/examples) and the [module dependency guide](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/MODULE_DEPENDENCIES.md).
+
+Example:
+
+```bash
+curl -X POST http://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "list_catalyst_centers",
+      "arguments": {}
+    }
+  }'
+```
 
 ## Version Fallback
 
@@ -1379,52 +1192,22 @@ CATALYSTCENTER_VERSION=3.1.3
 
 ## Examples
 
-See `examples/` directory for complete workflows:
+See the [examples directory](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/tree/main/examples) for complete workflows:
 - Site provisioning
 - Device discovery  
 - Network settings
 - SD-Access fabric
 - **Multi-tenant operations** (2 Catalyst Center instances)
 - **Version fallback** (automatic version normalization)
-    "method": "tools/call",
-    "params": {
-      "name": "provision_site",
-      "arguments": {
-        "site_type": "building",
-        "name": "PDX-HQ",
-        "parent_path": "Global",
-        "catalyst_center": "Portland"
-      }
-    }
-  }'
-```
-
-You can also inspect configured clusters first with `list_catalyst_centers`.
-
-Example:
-
-```bash
-curl -X POST http://127.0.0.1:8000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/call",
-    "params": {
-      "name": "list_catalyst_centers",
-      "arguments": {}
-    }
-  }'
-```
 
 ## Production Deployment
 
-For production, use:
-- Docker Compose stack (included)
-- Systemd service with NGINX reverse proxy
-- HTTPS with OAuth authentication
+For production, prefer:
+- Docker Compose HTTPS stack for Redis, the MCP app, and NGINX
+- Docker behind an external reverse proxy for simpler single-node deployments
+- systemd with NGINX only when you intentionally manage a host-based Python install
 
-See `deploy/` directory for production configurations.
+See [compose.yaml](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/compose.yaml) and the files under [`deploy/`](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/tree/main/deploy) for production configurations.
 
 ## Endpoints
 
@@ -1436,7 +1219,7 @@ See `deploy/` directory for production configurations.
 ## Documentation
 
 ### Module Dependencies Guide
-See **[MODULE_DEPENDENCIES.md](MODULE_DEPENDENCIES.md)** for comprehensive documentation on:
+See **[MODULE_DEPENDENCIES.md](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/MODULE_DEPENDENCIES.md)** for comprehensive documentation on:
 - **Mandatory requirements** for each workflow module
 - **How to get required information** (device IPs, site IDs, etc.)
 - **Prerequisite data gathering** using config generators
@@ -1448,10 +1231,14 @@ See **[MODULE_DEPENDENCIES.md](MODULE_DEPENDENCIES.md)** for comprehensive docum
 - Site ID (get from `generate_site_config()`)
 
 ### Additional Resources
-- [Examples](examples/) - Working code samples
-- [Tool Catalog](tool_catalog.yaml) - All available modules
-- [Schema Architecture](SCHEMA_DRIVEN_ARCHITECTURE.md) - Tool registry design
-- [Contributing](CONTRIBUTING.md) - Development guide
+- [Examples](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/tree/main/examples) - Working code samples
+- [Tool Catalog](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/tool_catalog.yaml) - All available modules
+- [Schema Architecture](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/SCHEMA_DRIVEN_ARCHITECTURE.md) - Tool registry design
+- [Contributing](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/CONTRIBUTING.md) - Development guide
+
+## Release Notes
+
+See [CHANGELOG.md](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/CHANGELOG.md) for version history, release notes, and upgrade guidance.
 
 ## Troubleshooting
 
@@ -1464,6 +1251,12 @@ ansible-galaxy collection install cisco.catalystcenter:==2.6.0 --force
 
 **Redis errors:** Ensure Redis is running and accessible
 
+## Support
+
+For the certified `cisco.catalystcenter` collection on Red Hat Automation Hub, use the `Create issue` action from the collection page instead of opening GitHub issues for collection certification support.
+
+For this MCP server repository, open issues in [GitHub Issues](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/issues). For broader Catalyst Center platform guidance, see [Cisco DevNet](https://developer.cisco.com/catalyst-center/).
+
 ## License
 
-Cisco Sample Code License
+This repository is provided under the [Cisco Sample Code License, Version 1.1](https://github.com/cisco-en-programmability/catalyst_center_iac_mcpserver/blob/main/LICENSE).

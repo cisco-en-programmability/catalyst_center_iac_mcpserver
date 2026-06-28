@@ -8,11 +8,11 @@ version = "0.1.0"
 description = "Production-grade FastMCP server for Cisco Catalyst Center IaC workflow managers."
 readme = "README.md"
 requires-python = ">=3.11"
+license = { file = "LICENSE" }
 authors = [
   { name = "OpenAI Codex" }
 ]
 dependencies = [
-  "ansible-core>=2.17.0,<2.19.0",
   "ansible-runner>=2.4.0,<3.0.0",
   "catalystcentersdk>=3.1.6.0.0",
   "fastapi>=0.135.0,<1.0.0",
@@ -39,6 +39,7 @@ dev = [
 ]
 
 [tool.setuptools]
+license-files = ["LICENSE"]
 py-modules = [
   "server",
   "runner_engine",

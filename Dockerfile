@@ -24,11 +24,12 @@ RUN useradd --create-home --home-dir /home/appuser --shell /usr/sbin/nologin app
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
-COPY server.py runner_engine.py transformers.py redis_store.py settings.py models.py ./
+COPY pyproject.toml README.md LICENSE requirements.yml tool_catalog.yaml catalyst_center_clusters.yaml ./
+COPY server.py runner_engine.py transformers.py redis_store.py settings.py models.py cluster_registry.py tool_registry.py ./
 RUN pip install --upgrade pip setuptools wheel \
+    && pip install "ansible-core>=2.16,<2.19" \
     && pip install . \
-    && ansible-galaxy collection install cisco.catalystcenter
+    && ansible-galaxy collection install -r requirements.yml
 
 USER appuser
 EXPOSE 8000
