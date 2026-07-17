@@ -28,10 +28,10 @@ The authoritative schema that defines:
 
 ### 2. **Tool Catalog** (`tool_catalog.yaml`)
 
-The single source of truth for all 79 tools:
+The single source of truth for all 77 tools:
 - **9 Direct Tools** - Specialized with custom handlers
-- **39 Workflow Creation Tools** - Generic configuration tools
-- **30 Configuration Generation Tools** - Read-only query tools
+- **38 Workflow Creation Tools** - Generic configuration tools
+- **29 Configuration Generation Tools** - Read-only query tools
 - **1 Platform Tool** - Cluster management
 
 **Structure:**
@@ -98,7 +98,7 @@ for definition in TOOL_CATALOG.iter_workflow_tools("configuration_generation"):
 │  JSON Schema                        │
 │  tool_catalog.schema.yaml           │
 │  - Defines valid structure          │
-│  - 21 categories documented         │
+│  - 20 categories documented         │
 │  - 120+ module examples             │
 └──────────────┬──────────────────────┘
                │ validates
@@ -107,8 +107,8 @@ for definition in TOOL_CATALOG.iter_workflow_tools("configuration_generation"):
 │  Tool Catalog                       │
 │  tool_catalog.yaml                  │
 │  - 5 direct tools                   │
-│  - 39 workflow creation tools       │
-│  - 30 config generation tools       │
+│  - 38 workflow creation tools       │
+│  - 29 config generation tools       │
 └──────────────┬──────────────────────┘
                │ loaded by
                ▼
@@ -194,10 +194,9 @@ The schema defines 21 categories across all tool types:
 | path_trace | 0 | 1 | 0 | 1 |
 | **sd_access_fabric** | **0** | **8** | **7** | **15** |
 | lan_automation | 0 | 1 | 0 | 1 |
-| wired_campus | 0 | 1 | 1 | 2 |
 | software_upgrade_swim | 0 | 1 | 0 | 1 |
 | rma | 0 | 1 | 1 | 2 |
-| **TOTAL** | **5** | **39** | **30** | **74** |
+| **TOTAL** | **5** | **38** | **29** | **72** |
 
 *Note: `cluster_management` represents the two server-registered Catalyst Center listing tools that are not sourced from `tool_catalog.yaml`.*
 
@@ -234,9 +233,9 @@ python3 scripts/manage_tool_catalog.py validate
 # 
 # 📊 Tool Statistics:
 #    Direct tools: 5
-#    Workflow creation tools: 39
-#    Workflow generation tools: 30
-#    Total tools: 74
+#    Workflow creation tools: 38
+#    Workflow generation tools: 29
+#    Total tools: 72
 # 
 # ✅ Validation successful!
 ```
@@ -419,7 +418,7 @@ curl http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 
-# Should return 74 tools
+# Should return 72 tools
 ```
 
 ---
@@ -492,5 +491,5 @@ The schema-driven architecture provides:
 
 **Last Updated**: April 22, 2026  
 **Schema Version**: 1.0  
-**Total Tools**: 74 (5 direct + 39 workflow + 30 generators)  
+**Total Tools**: 72 (5 direct + 38 workflow + 29 generators)  
 **Collection Version**: cisco.catalystcenter 2.8.0

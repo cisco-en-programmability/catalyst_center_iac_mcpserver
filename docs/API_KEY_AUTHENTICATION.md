@@ -195,6 +195,37 @@ curl -H "X-API-Key: your-api-key-here" \
   http://localhost:8000/iactasks/get/abc-123-def-456/logs
 ```
 
+## Important: Auth Scope and Limitations
+
+> **⚠️ The `/mcp/` endpoint is NOT protected by API key authentication.**
+
+The MCP endpoint is mounted as a separate ASGI sub-application via `app.mount(settings.mcp_path, mcp_app)`. This means FastAPI's `Depends(get_identity_context)` is **not applied** to MCP requests.
+
+**What IS protected:**
+- `GET /healthz` — health check
+- `GET /iactasks/get/{task_id}` — task status
+- `GET /iactasks/get/{task_id}/logs` — task logs
+
+**What is NOT protected by API key:**
+- `POST /mcp/` — the MCP JSON-RPC endpoint itself
+
+**Implication:** If you need to restrict access to the MCP endpoint, rely on:
+1. Network-level controls (firewall, VPN, security groups)
+2. HTTPS with mutual TLS (mTLS)
+3. A reverse proxy (NGINX) that enforces the API key before proxying to `/mcp/`
+
+**Example NGINX enforcement:**
+```nginx
+location /mcp/ {
+    # Enforce API key at the proxy level
+    if ($http_x_api_key = "") {
+        return 401;
+    }
+    # Validate against known key (or use auth_request to backend)
+    proxy_pass http://127.0.0.1:8000;
+}
+```
+
 ## Authentication Flow
 
 ```
@@ -328,7 +359,9 @@ OAUTH_JWKS_URL=https://your-idp.com/.well-known/jwks.json
 
 JWT claims should include `tenant_id` or `tid`.
 
-## Combining with OAuth
+## Combining with OAuth (Optional — advanced)
+
+> **Note:** Only needed if you want both API key and OAuth running simultaneously. Most deployments use one or the other.
 
 You can enable both authentication methods:
 
@@ -478,7 +511,9 @@ curl -H "X-My-Custom-Header: my-test-key" http://localhost:8000/healthz
 # Expected: 200 {"status": "ok", "subject": "apikey:my-test-..."}
 ```
 
-## Production Deployment
+## Production Deployment (Optional — reference examples)
+
+> **Note:** These are reference deployment patterns for production environments. Not required for basic setup or lab testing. Skip this section unless you are deploying to Docker, Kubernetes, or behind NGINX.
 
 ### Docker Compose
 
@@ -616,7 +651,9 @@ export $(cat .env | xargs)
 pip install python-dotenv
 ```
 
-## Migration Guide
+## Migration Guide (Optional — only if changing auth modes)
+
+> **Note:** Only relevant if you are migrating an existing deployment from one auth mode to another. Skip if setting up fresh.
 
 ### From Anonymous to API Key Auth
 
@@ -662,6 +699,114 @@ To:
 headers = {"X-API-Key": "key1"}
 ```
 
+## Client Configuration (Optional — pick your client)
+
+> **Note:** This section is for **client users** who want to connect to an already-running MCP server. You only need to configure **one** client — whichever tool you use. These are NOT required for the server to run.
+
+### OpenAI Codex (App-level MCP)
+
+In Codex settings → MCP servers → "Connect to a custom MCP":
+
+| Field | Value |
+|-------|-------|
+| **Name** | `Catalyst Center IAC MCP` |
+| **Type** | `Streamable HTTP` |
+| **URL** | `https://<server-ip>:8020/mcp/` |
+| **Bearer token env var** | _(leave empty)_ |
+| **Headers** → Key | `X-API-Key` |
+| **Headers** → Value | `<your-api-key>` |
+
+### VS Code (settings.json)
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "catalyst-center-iac-mcp": {
+        "type": "http",
+        "url": "https://<server-ip>:8020/mcp/",
+        "headers": {
+          "X-API-Key": "<your-api-key>"
+        }
+      }
+    }
+  }
+}
+```
+
+### Claude Desktop (claude_desktop_config.json)
+
+```json
+{
+  "mcpServers": {
+    "catalyst-center": {
+      "url": "https://<server-ip>:8020/mcp/",
+      "transport": "http",
+      "headers": {
+        "X-API-Key": "<your-api-key>"
+      }
+    }
+  }
+}
+```
+
+### MCP Transport Modes
+
+| Mode | Name | Description |
+|------|------|-------------|
+| **STDIO** | Standard I/O | Client spawns server as subprocess, communicates via stdin/stdout. Local only. |
+| **Streamable HTTP** | HTTP Transport | Client connects to remote server via HTTPS URL. Supports multiple clients. |
+
+- Use **STDIO** for local development (VS Code spawns the server directly)
+- Use **Streamable HTTP** for remote/shared deployments (Codex, multiple users)
+
+## Self-Signed TLS Certificate (Optional — Lab/Testing only)
+
+> **Note:** Only needed if you do NOT have a certificate from your IT team or a CA (Let's Encrypt, etc.). If your organization provides TLS certificates, use those instead and skip this section.
+
+For lab environments without a CA-issued certificate:
+
+```bash
+# Generate self-signed cert valid for 365 days
+mkdir -p certs
+openssl req -x509 -newkey rsa:4096 -nodes \
+  -keyout certs/privkey.pem \
+  -out certs/fullchain.pem \
+  -days 365 \
+  -subj "/CN=$(hostname)" \
+  -addext "subjectAltName=DNS:$(hostname),DNS:localhost,IP:<your-ip>,IP:127.0.0.1"
+```
+
+Then configure in `.env`:
+```bash
+HTTPS_ONLY=true
+TLS_CERTFILE=./certs/fullchain.pem
+TLS_KEYFILE=./certs/privkey.pem
+```
+
+**Client note:** Self-signed certs require clients to skip SSL verification:
+- `curl -k` or `curl --insecure`
+- Python: `httpx.Client(verify=False)`
+- Codex/Claude Desktop: usually handles this automatically
+
+## URL Path Notes (Good to know)
+
+> **Note:** This is informational. You don't need to configure anything — just be aware of the trailing slash behavior when setting up clients.
+
+### Trailing Slash Behavior
+
+The MCP endpoint path is configurable via `MCP_PATH` (default: `/mcp`). The server includes a `McpPathCanonicalizationMiddleware` that normalizes requests:
+
+- `POST /mcp` → internally rewritten to `POST /mcp/`
+- `POST /mcp/` → handled directly
+
+**Recommendation:** Always use the trailing slash form in client configuration:
+```
+https://server:8020/mcp/
+```
+
+Some clients (e.g., Codex) may initially probe with `GET /mcp` (returns 405) before sending `POST /mcp/`. This is normal handshake behavior.
+
 ## Additional Resources
 
 - [README.md](../README.md) - Main documentation
@@ -670,5 +815,5 @@ headers = {"X-API-Key": "key1"}
 
 ---
 
-**Last Updated:** 2026-05-31  
-**Version:** 1.0.0
+**Last Updated:** 2026-06-09  
+**Version:** 1.1.0

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from fastmcp.exceptions import ToolError
 
 import server
 from models import TaskLifecycleStatus, TaskRecord
@@ -44,6 +45,9 @@ def test_all_workflow_manager_tools_are_registered():
     assert "inventory" in names
     assert "wireless_design" in names
     assert "swim" in names
+    assert "site_mcp" in names
+    assert "reports_mcp" in names
+    assert "wired_campus_automation_mcp" not in names
 
 
 def test_playbook_config_generator_tools_are_registered_when_available():
@@ -133,6 +137,58 @@ def test_reports_validation_rejects_missing_generate_report_view():
         assert "generate_report[].view" in str(exc.detail)
 
 
+def test_reports_validation_accepts_nested_view_object():
+    server._validate_workflow_config(
+        "reports",
+        "reports_workflow_manager",
+        [
+            {
+                "generate_report": [
+                    {
+                        "view_group_name": "Inventory",
+                        "schedule": {
+                            "schedule_type": "SCHEDULE_NOW",
+                            "time_zone": "America/Los_Angeles",
+                        },
+                        "deliveries": [{"delivery_type": "DOWNLOAD"}],
+                        "view": {
+                            "view_name": "All Data Version 2.0",
+                            "format": {"format_type": "PDF"},
+                        },
+                    }
+                ]
+            }
+        ],
+    )
+
+
+def test_reports_validation_rejects_missing_view_name():
+    try:
+        server._validate_workflow_config(
+            "reports",
+            "reports_workflow_manager",
+            [
+                {
+                    "generate_report": [
+                        {
+                            "view_group_name": "Inventory",
+                            "schedule": {
+                                "schedule_type": "SCHEDULE_NOW",
+                                "time_zone": "America/Los_Angeles",
+                            },
+                            "deliveries": [{"delivery_type": "DOWNLOAD"}],
+                            "view": {"format": {"format_type": "PDF"}},
+                        }
+                    ]
+                }
+            ],
+        )
+        assert False, "expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert "generate_report[].view.view_name" in str(exc.detail)
+
+
 def test_template_workflow_validation_rejects_unknown_force_push_template_key():
     try:
         server._validate_workflow_config(
@@ -164,10 +220,31 @@ def test_cluster_listing_tool_is_registered():
     names = asyncio.run(_list_names())
 
     assert "list_catalyst_centers" in names
+    assert "list_registered_tools" in names
     assert "get_iac_task" in names
     assert "get_iac_taskdetail" in names
     assert "get_task_stdout" in names
     assert "get_task_log" in names
+
+
+def test_list_registered_tools_includes_workflow_manager_aliases():
+    async def _call_tool():
+        return await server.mcp.call_tool("list_registered_tools", {})
+
+    result = asyncio.run(_call_tool())
+    payload = result.structured_content
+
+    names = {item["name"] for item in payload["tools"]}
+
+    assert payload["counts"]["workflowCreation"] > 0
+    assert "site" in names
+    assert "site_mcp" in names
+    assert "reports_mcp" in names
+    assert "inventory_config" in names
+
+    by_name = {item["name"]: item for item in payload["tools"]}
+    assert by_name["site_mcp"]["aliasFor"] == "site"
+    assert by_name["site_mcp"]["workflowCategory"] == "configuration_creation"
 
 
 def test_inventory_config_tool_returns_iac_task_id(monkeypatch):
@@ -199,6 +276,74 @@ def test_inventory_config_tool_returns_iac_task_id(monkeypatch):
         "file_path": "/tmp/inventory.yml",
         "state": "gathered",
     }
+
+
+def test_sda_host_port_onboarding_config_normalizes_wireless_site_list(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class DummyEngine:
+        async def submit_module(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(task_id="iac-task-sda-host-port")
+
+    monkeypatch.setattr(server, "engine", DummyEngine())
+
+    async def _call_tool():
+        return await server.mcp.call_tool(
+            "sda_host_port_onboarding_config",
+            {
+                "module_args_json": (
+                    "{\"config\":{\"component_specific_filters\":{"
+                    "\"components_list\":[\"wireless_ssids\"],"
+                    "\"wireless_ssids\":[{\"fabric_site_name_hierarchy\":["
+                    "\"Global/USA/San Jose/Building1\","
+                    "\"Global/USA/RTP/Building2\""
+                    "]}]}}}"
+                ),
+            },
+        )
+
+    result = asyncio.run(_call_tool())
+
+    assert result.structured_content["iacTaskId"] == "iac-task-sda-host-port"
+    assert captured["tool_name"] == "sda_host_port_onboarding_config"
+    assert captured["module_args"] == {
+        "config": {
+            "component_specific_filters": {
+                "components_list": ["wireless_ssids"],
+                "wireless_ssids": [
+                    {"fabric_site_name_hierarchy": "Global/USA/San Jose/Building1"},
+                    {"fabric_site_name_hierarchy": "Global/USA/RTP/Building2"},
+                ],
+            }
+        },
+        "state": "gathered",
+    }
+
+
+def test_sda_host_port_onboarding_config_rejects_empty_wireless_site_list(monkeypatch):
+    class DummyEngine:
+        async def submit_module(self, **kwargs):
+            return SimpleNamespace(task_id="unexpected")
+
+    monkeypatch.setattr(server, "engine", DummyEngine())
+
+    try:
+        asyncio.run(
+            server.mcp.call_tool(
+                "sda_host_port_onboarding_config",
+                {
+                    "module_args_json": (
+                        "{\"config\":{\"component_specific_filters\":{"
+                        "\"components_list\":[\"wireless_ssids\"],"
+                        "\"wireless_ssids\":[{\"fabric_site_name_hierarchy\":[]}]}}}"
+                    ),
+                },
+            )
+        )
+        assert False, "expected HTTPException"
+    except ToolError as exc:
+        assert "must not be an empty list" in str(exc)
 
 
 def test_generic_workflow_tool_accepts_single_config_object(monkeypatch):

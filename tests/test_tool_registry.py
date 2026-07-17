@@ -13,8 +13,9 @@ def test_tool_catalog_loads_with_expected_top_categories():
     assert "provision" in workflow_creation_categories
     assert "sd_access_fabric" in workflow_creation_categories
     assert "inventory" in workflow_generation_categories
-    assert "wired_campus" in workflow_generation_categories
     assert "rma" in workflow_generation_categories
+    assert "wired_campus" not in workflow_creation_categories
+    assert "wired_campus" not in workflow_generation_categories
 
 
 def test_tool_catalog_derives_expected_tool_names():
@@ -34,8 +35,9 @@ def test_tool_catalog_derives_expected_tool_names():
     assert "reports" in workflow_tool_names
     assert "swim" in workflow_tool_names
     assert "lan_automation" in workflow_tool_names
-    assert "wired_campus_automation" in workflow_tool_names
     assert "rma" in workflow_tool_names
     assert "site_config" in generator_tool_names
     assert "inventory_config" in generator_tool_names
     assert "rma_config" in generator_tool_names
+    assert "wired_campus_automation" not in workflow_tool_names
+    assert "wired_campus_automation_config" not in generator_tool_names

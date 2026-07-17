@@ -30,7 +30,6 @@ description: |
   - path_trace: Network path analysis
   - sd_access_fabric: SD-Access fabric (devices, multicast, sites, transits, VNs, extranet, host ports)
   - lan_automation: Automated LAN deployment
-  - wired_campus: Wired campus automation
   - software_upgrade_swim: Software image management
   - rma: Device replacement workflows
   
@@ -234,10 +233,6 @@ definitions:
           - lan_automation_workflow_manager
           - lan_automation_playbook_config_generator
           
-          # Wired Campus
-          - wired_campus_automation_workflow_manager
-          - wired_campus_automation_playbook_config_generator
-          
           # Software Upgrade (SWIM)
           - swim_workflow_manager
           - swim_playbook_config_generator
@@ -386,9 +381,6 @@ examples:
         lan_automation:
           - module_name: lan_automation_workflow_manager
             
-        wired_campus:
-          - module_name: wired_campus_automation_workflow_manager
-            
         software_upgrade_swim:
           - module_name: swim_workflow_manager
             
@@ -476,9 +468,6 @@ examples:
             
         lan_automation:
           - module_name: lan_automation_playbook_config_generator
-            
-        wired_campus:
-          - module_name: wired_campus_automation_playbook_config_generator
             
         software_upgrade_swim:
           - module_name: swim_playbook_config_generator
